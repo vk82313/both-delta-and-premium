@@ -1169,7 +1169,7 @@ eth_bot = ETHWebSocketBot()
 btc_bot = BTCRESTBot()
 
 # -------------------------------
-# Flask Routes - Combined Interface
+# HTML Template (same as before)
 # -------------------------------
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -1876,6 +1876,9 @@ HTML_TEMPLATE = '''
 </html>
 '''
 
+# -------------------------------
+# Flask Routes
+# -------------------------------
 @app.route('/')
 def home():
     now = datetime.now()
@@ -1889,7 +1892,8 @@ def home():
                                  now=now,
                                  get_ist_time=get_ist_time,
                                  format_expiry_display=format_expiry_display,
-                                 success=request.args.get('success'))
+                                 success=request.args.get('success'),
+                                 len=len)  # ← FIXED: Added len function here
 
 @app.route('/activate_alerts', methods=['POST'])
 def activate_alerts():
