@@ -2100,12 +2100,12 @@ def start_bots():
     btc_thread.start()
     
     print(f"[{datetime.now()}] ✅ Both systems started")
-    print(f"[{datetime.now()}] 🌐 Website: http://localhost:{port}")
 
 if __name__ == "__main__":
     start_bots()
     sleep(2)
     
     port = int(os.environ.get("PORT", 10000))
+    print(f"[{datetime.now()}] 🌐 Website: http://localhost:{port}")
     print(f"[{datetime.now()}] 🚀 Starting web server on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
