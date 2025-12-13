@@ -1169,7 +1169,7 @@ eth_bot = ETHWebSocketBot()
 btc_bot = BTCRESTBot()
 
 # -------------------------------
-# HTML Template (same as before)
+# HTML Template
 # -------------------------------
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -1177,7 +1177,7 @@ HTML_TEMPLATE = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dual Alert System - Delta Exchange</title>
+    <title>Dual Alert System</title>
     <style>
         * {
             margin: 0;
@@ -1506,14 +1506,13 @@ HTML_TEMPLATE = '''
 <body>
     <div class="container">
         <div class="header">
-            <h1>🚀 Delta Exchange Dual Alert System</h1>
+            <h1>🚀 Dual Alert System</h1>
             <div class="subtitle">Arbitrage Alerts + Option Strike Alerts - Running Simultaneously</div>
         </div>
         
         <div class="tabs">
             <button class="tab-btn active" onclick="showTab('arbitrage')">Arbitrage System</button>
             <button class="tab-btn" onclick="showTab('option-alerts')">Option Alerts</button>
-            <button class="tab-btn" onclick="showTab('dashboard')">Dashboard</button>
         </div>
         
         <!-- Success Message -->
@@ -1618,7 +1617,7 @@ HTML_TEMPLATE = '''
                         <!-- BTC CALL Card -->
                         <div class="option-card btc-call">
                             <h4>🔵 BTC CALL OPTIONS</h4>
-                            <select name="btc_call_strike" class="select-input" required>
+                            <select name="btc_call_strike" class="select-input">
                                 <option value="">Select Strike</option>
                                 {% for strike in btc_bot.option_chain_data.calls.keys()|sort %}
                                 <option value="{{ strike }}" {% if alert_configs['btc_call'].strike == strike %}selected{% endif %}>
@@ -1628,7 +1627,7 @@ HTML_TEMPLATE = '''
                             </select>
                             <input type="number" name="btc_call_premium" placeholder="Premium ($)" 
                                    value="{{ "%.2f"|format(alert_configs['btc_call'].premium) if alert_configs['btc_call'].premium > 0 else '' }}"
-                                   step="0.01" min="0" class="threshold-input" required>
+                                   step="0.01" min="0" class="threshold-input">
                             <div class="checkbox-group">
                                 <input type="checkbox" name="btc_call_monitor" id="btc_call_monitor" 
                                        {% if alert_configs['btc_call'].is_monitoring %}checked{% endif %}>
@@ -1639,7 +1638,7 @@ HTML_TEMPLATE = '''
                         <!-- BTC PUT Card -->
                         <div class="option-card btc-put">
                             <h4>🔴 BTC PUT OPTIONS</h4>
-                            <select name="btc_put_strike" class="select-input" required>
+                            <select name="btc_put_strike" class="select-input">
                                 <option value="">Select Strike</option>
                                 {% for strike in btc_bot.option_chain_data.puts.keys()|sort %}
                                 <option value="{{ strike }}" {% if alert_configs['btc_put'].strike == strike %}selected{% endif %}>
@@ -1649,7 +1648,7 @@ HTML_TEMPLATE = '''
                             </select>
                             <input type="number" name="btc_put_premium" placeholder="Premium ($)" 
                                    value="{{ "%.2f"|format(alert_configs['btc_put'].premium) if alert_configs['btc_put'].premium > 0 else '' }}"
-                                   step="0.01" min="0" class="threshold-input" required>
+                                   step="0.01" min="0" class="threshold-input">
                             <div class="checkbox-group">
                                 <input type="checkbox" name="btc_put_monitor" id="btc_put_monitor"
                                        {% if alert_configs['btc_put'].is_monitoring %}checked{% endif %}>
@@ -1660,7 +1659,7 @@ HTML_TEMPLATE = '''
                         <!-- ETH CALL Card -->
                         <div class="option-card eth-call">
                             <h4>🟢 ETH CALL OPTIONS</h4>
-                            <select name="eth_call_strike" class="select-input" required>
+                            <select name="eth_call_strike" class="select-input">
                                 <option value="">Select Strike</option>
                                 {% for strike in eth_bot.option_chain_data.calls.keys()|sort %}
                                 <option value="{{ strike }}" {% if alert_configs['eth_call'].strike == strike %}selected{% endif %}>
@@ -1670,7 +1669,7 @@ HTML_TEMPLATE = '''
                             </select>
                             <input type="number" name="eth_call_premium" placeholder="Premium ($)" 
                                    value="{{ "%.2f"|format(alert_configs['eth_call'].premium) if alert_configs['eth_call'].premium > 0 else '' }}"
-                                   step="0.01" min="0" class="threshold-input" required>
+                                   step="0.01" min="0" class="threshold-input">
                             <div class="checkbox-group">
                                 <input type="checkbox" name="eth_call_monitor" id="eth_call_monitor"
                                        {% if alert_configs['eth_call'].is_monitoring %}checked{% endif %}>
@@ -1681,7 +1680,7 @@ HTML_TEMPLATE = '''
                         <!-- ETH PUT Card -->
                         <div class="option-card eth-put">
                             <h4>🟣 ETH PUT OPTIONS</h4>
-                            <select name="eth_put_strike" class="select-input" required>
+                            <select name="eth_put_strike" class="select-input">
                                 <option value="">Select Strike</option>
                                 {% for strike in eth_bot.option_chain_data.puts.keys()|sort %}
                                 <option value="{{ strike }}" {% if alert_configs['eth_put'].strike == strike %}selected{% endif %}>
@@ -1691,7 +1690,7 @@ HTML_TEMPLATE = '''
                             </select>
                             <input type="number" name="eth_put_premium" placeholder="Premium ($)" 
                                    value="{{ "%.2f"|format(alert_configs['eth_put'].premium) if alert_configs['eth_put'].premium > 0 else '' }}"
-                                   step="0.01" min="0" class="threshold-input" required>
+                                   step="0.01" min="0" class="threshold-input">
                             <div class="checkbox-group">
                                 <input type="checkbox" name="eth_put_monitor" id="eth_put_monitor"
                                        {% if alert_configs['eth_put'].is_monitoring %}checked{% endif %}>
@@ -1749,101 +1748,8 @@ HTML_TEMPLATE = '''
             </div>
         </div>
         
-        <!-- Tab 3: Dashboard -->
-        <div id="dashboard-tab" class="tab-content">
-            <div class="system-section">
-                <h2 class="section-title">📈 Combined Dashboard</h2>
-                
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <h3>⚡ System 1: Arbitrage</h3>
-                        <div class="stat-item">
-                            <span class="stat-label">ETH Status:</span>
-                            <span class="stat-value">{{ "✅ Live" if eth_bot.connected else "🔴 Off" }}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">BTC Status:</span>
-                            <span class="stat-value">{{ "✅ Live" if btc_bot.running else "🔴 Off" }}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Total Alerts:</span>
-                            <span class="stat-value">{{ eth_bot.alert_count + btc_bot.alert_count }}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Active Expiry:</span>
-                            <span class="stat-value">{{ eth_bot.active_expiry if eth_bot.active_expiry == btc_bot.active_expiry else "Mismatch" }}</span>
-                        </div>
-                    </div>
-                    
-                    <div class="stat-card">
-                        <h3>🎯 System 2: Option Alerts</h3>
-                        <div class="stat-item">
-                            <span class="stat-label">System Status:</span>
-                            <span class="stat-value">{{ "✅ Active" if new_system_active else "❌ Inactive" }}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Active Alerts:</span>
-                            <span class="stat-value">
-                                {% set active_count = 0 %}
-                                {% for config in alert_configs.values() %}
-                                    {% if config.is_monitoring %}{% set active_count = active_count + 1 %}{% endif %}
-                                {% endfor %}
-                                {{ active_count }} / 4
-                            </span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Last Check:</span>
-                            <span class="stat-value">
-                                {% if last_check_time %}
-                                    {{ (now - last_check_time).seconds }}s ago
-                                {% else %}
-                                    Never
-                                {% endif %}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="threshold-card">
-                    <h3>🔧 Quick Settings</h3>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
-                        <a href="#arbitrage" onclick="showTab('arbitrage')" style="text-decoration: none;">
-                            <button class="update-btn" style="background: linear-gradient(135deg, #4a6ee0, #6a11cb);">
-                                ⚙️ Arbitrage Settings
-                            </button>
-                        </a>
-                        <a href="#option-alerts" onclick="showTab('option-alerts')" style="text-decoration: none;">
-                            <button class="update-btn" style="background: linear-gradient(135deg, #2ecc71, #27ae60);">
-                                🎯 Option Alerts
-                            </button>
-                        </a>
-                    </div>
-                </div>
-                
-                <div class="status-panel">
-                    <h3>📋 Recent Activity</h3>
-                    <div class="status-item">
-                        <span class="status-label">ETH Messages:</span>
-                        <span class="stat-value">{{ eth_bot.message_count }}</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="status-label">BTC Fetches:</span>
-                        <span class="stat-value">{{ btc_bot.fetch_count }}</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="status-label">Current Time (IST):</span>
-                        <span class="stat-value">{{ get_ist_time() }}</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="status-label">Current Expiry:</span>
-                        <span class="stat-value">{{ format_expiry_display(eth_bot.active_expiry) }}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
         <div class="footer">
-            <p>Delta Exchange Dual Alert System • Auto-expiry at 5:30 PM IST • Both systems running simultaneously</p>
+            <p>Auto-expiry at 5:30 PM IST • Both systems running simultaneously</p>
             <p>Last Update: {{ get_ist_time() }} • <a href="/health" style="color: #4a6ee0;">Health Check</a></p>
         </div>
     </div>
@@ -1866,11 +1772,6 @@ HTML_TEMPLATE = '''
             // Activate selected button
             event.target.classList.add('active');
         }
-        
-        // Auto-refresh every 10 seconds
-        setTimeout(function() {
-            window.location.reload();
-        }, 10000);
     </script>
 </body>
 </html>
@@ -1893,7 +1794,7 @@ def home():
                                  get_ist_time=get_ist_time,
                                  format_expiry_display=format_expiry_display,
                                  success=request.args.get('success'),
-                                 len=len)  # ← FIXED: Added len function here
+                                 len=len)
 
 @app.route('/activate_alerts', methods=['POST'])
 def activate_alerts():
@@ -1907,8 +1808,10 @@ def activate_alerts():
             old_configs[config_id] = asdict(config)
         
         # Update BTC Call config
-        btc_call_strike = float(request.form.get('btc_call_strike', 0))
-        btc_call_premium = float(request.form.get('btc_call_premium', 0))
+        btc_call_strike_str = request.form.get('btc_call_strike', '')
+        btc_call_strike = float(btc_call_strike_str) if btc_call_strike_str else 0
+        btc_call_premium_str = request.form.get('btc_call_premium', '')
+        btc_call_premium = float(btc_call_premium_str) if btc_call_premium_str else 0
         btc_call_monitor = 'btc_call_monitor' in request.form
         
         alert_configs['btc_call'].strike = btc_call_strike
@@ -1918,8 +1821,10 @@ def activate_alerts():
         alert_configs['btc_call'].active_expiry = btc_bot.active_expiry
         
         # Update BTC Put config
-        btc_put_strike = float(request.form.get('btc_put_strike', 0))
-        btc_put_premium = float(request.form.get('btc_put_premium', 0))
+        btc_put_strike_str = request.form.get('btc_put_strike', '')
+        btc_put_strike = float(btc_put_strike_str) if btc_put_strike_str else 0
+        btc_put_premium_str = request.form.get('btc_put_premium', '')
+        btc_put_premium = float(btc_put_premium_str) if btc_put_premium_str else 0
         btc_put_monitor = 'btc_put_monitor' in request.form
         
         alert_configs['btc_put'].strike = btc_put_strike
@@ -1929,8 +1834,10 @@ def activate_alerts():
         alert_configs['btc_put'].active_expiry = btc_bot.active_expiry
         
         # Update ETH Call config
-        eth_call_strike = float(request.form.get('eth_call_strike', 0))
-        eth_call_premium = float(request.form.get('eth_call_premium', 0))
+        eth_call_strike_str = request.form.get('eth_call_strike', '')
+        eth_call_strike = float(eth_call_strike_str) if eth_call_strike_str else 0
+        eth_call_premium_str = request.form.get('eth_call_premium', '')
+        eth_call_premium = float(eth_call_premium_str) if eth_call_premium_str else 0
         eth_call_monitor = 'eth_call_monitor' in request.form
         
         alert_configs['eth_call'].strike = eth_call_strike
@@ -1940,8 +1847,10 @@ def activate_alerts():
         alert_configs['eth_call'].active_expiry = eth_bot.active_expiry
         
         # Update ETH Put config
-        eth_put_strike = float(request.form.get('eth_put_strike', 0))
-        eth_put_premium = float(request.form.get('eth_put_premium', 0))
+        eth_put_strike_str = request.form.get('eth_put_strike', '')
+        eth_put_strike = float(eth_put_strike_str) if eth_put_strike_str else 0
+        eth_put_premium_str = request.form.get('eth_put_premium', '')
+        eth_put_premium = float(eth_put_premium_str) if eth_put_premium_str else 0
         eth_put_monitor = 'eth_put_monitor' in request.form
         
         alert_configs['eth_put'].strike = eth_put_strike
@@ -2084,7 +1993,7 @@ def ping():
 # -------------------------------
 def start_bots():
     print("="*60)
-    print("DUAL ALERT SYSTEM - Delta Exchange")
+    print("DUAL ALERT SYSTEM")
     print("="*60)
     print(f"⚡ System 1: Arbitrage Alerts")
     print(f"   • ETH Threshold: ${DELTA_THRESHOLD['ETH']:.2f}")
