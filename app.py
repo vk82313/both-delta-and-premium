@@ -193,10 +193,7 @@ class ETHWebSocketBot:
         
         # New system data
         self.option_chain_data = {'calls': {}, 'puts': {}}
-        self.user_alerts_config = {
-            'eth_call': {'strike': 0, 'premium': 0, 'active': False},
-            'eth_put': {'strike': 0, 'premium': 0, 'active': False}
-        }
+        self.orderbook_data = {}  # Store orderbook data for quantity checks
 
     def get_initial_active_expiry(self):
         """Determine which expiry should be active right now"""
@@ -288,6 +285,7 @@ class ETHWebSocketBot:
                     self.options_prices = {}
                     self.active_symbols = []
                     self.option_chain_data = {'calls': {}, 'puts': {}}
+                    self.orderbook_data = {}
                     
                     # Update alert configs with new expiry
                     for config_id in alert_configs:
@@ -314,6 +312,7 @@ class ETHWebSocketBot:
                     self.options_prices = {}
                     self.active_symbols = []
                     self.option_chain_data = {'calls': {}, 'puts': {}}
+                    self.orderbook_data = {}
                     
                     # Update alert configs
                     for config_id in alert_configs:
@@ -451,11 +450,57 @@ class ETHWebSocketBot:
             
             if message_type == 'l1_orderbook':
                 self.process_l1_orderbook_data(message_json)
+            elif message_type == 'l2_orderbook' or message_type == 'order_book':
+                # Store full orderbook for quantity checks
+                self.process_orderbook_data(message_json)
             elif message_type == 'subscriptions':
                 print(f"[{datetime.now()}] ✅ ETH: Subscriptions confirmed for {self.active_expiry}")
                 
         except Exception as e:
             print(f"[{datetime.now()}] ❌ ETH: Message processing error: {e}")
+
+    def process_orderbook_data(self, message):
+        """Process orderbook data for quantity checks"""
+        try:
+            symbol = message.get('symbol')
+            if not symbol or 'ETH' not in symbol:
+                return
+                
+            symbol_expiry = self.extract_expiry_from_symbol(symbol)
+            if symbol_expiry != self.active_expiry:
+                return
+            
+            # Store orderbook data for quantity checks
+            self.orderbook_data[symbol] = message
+            
+        except Exception as e:
+            print(f"[{datetime.now()}] ❌ ETH: Error processing orderbook data: {e}")
+
+    def get_ask_quantity(self, symbol):
+        """Get ask quantity from orderbook data"""
+        try:
+            if symbol in self.orderbook_data:
+                orderbook = self.orderbook_data[symbol]
+                
+                # Check different possible structures
+                if 'sell' in orderbook:
+                    asks = orderbook.get('sell', [])
+                    if asks and len(asks) > 0:
+                        # Get best ask quantity
+                        best_ask = asks[0]
+                        if isinstance(best_ask, list) and len(best_ask) >= 2:
+                            return float(best_ask[1])  # quantity is usually second element
+                elif 'asks' in orderbook:
+                    asks = orderbook.get('asks', [])
+                    if asks and len(asks) > 0:
+                        best_ask = asks[0]
+                        if isinstance(best_ask, list) and len(best_ask) >= 2:
+                            return float(best_ask[1])
+                
+        except Exception as e:
+            print(f"[{datetime.now()}] ⚠️ ETH: Error getting ask quantity for {symbol}: {e}")
+        
+        return 0
 
     def process_l1_orderbook_data(self, message):
         """Process l1_orderbook data - BOTH SYSTEMS USE THIS"""
@@ -504,11 +549,11 @@ class ETHWebSocketBot:
         if not new_system_active:
             return
         
-        # Check ETH calls
+        # Check ETH calls - FIXED: Only check call options for call alerts
         eth_call_config = alert_configs['eth_call']
         if eth_call_config.is_monitoring and eth_call_config.strike > 0 and eth_call_config.premium > 0:
             alerts = []
-            for strike, symbol in self.option_chain_data['calls'].items():
+            for strike, symbol in self.option_chain_data['calls'].items():  # Only call symbols
                 if strike > eth_call_config.strike:
                     price_data = self.options_prices.get(symbol)
                     if price_data and price_data['bid'] >= eth_call_config.premium:
@@ -527,11 +572,11 @@ class ETHWebSocketBot:
                 send_alert_triggered_telegram(alert)
                 print(f"[{datetime.now()}] 🚨 ETH CALL Alert: Strike {alert['trigger_strike']} bid ${alert['bid_price']:.2f} ≥ ${alert['threshold']:.2f}")
         
-        # Check ETH puts
+        # Check ETH puts - FIXED: Only check put options for put alerts
         eth_put_config = alert_configs['eth_put']
         if eth_put_config.is_monitoring and eth_put_config.strike > 0 and eth_put_config.premium > 0:
             alerts = []
-            for strike, symbol in self.option_chain_data['puts'].items():
+            for strike, symbol in self.option_chain_data['puts'].items():  # Only put symbols
                 if strike < eth_put_config.strike:
                     price_data = self.options_prices.get(symbol)
                     if price_data and price_data['bid'] >= eth_put_config.premium:
@@ -602,43 +647,51 @@ class ETHWebSocketBot:
             strike1 = sorted_strikes[i]
             strike2 = sorted_strikes[i + 1]
             
-            # CALL arbitrage
+            # CALL arbitrage - ADDED QUANTITY CHECK
             call1_ask = strikes[strike1]['call'].get('ask', 0)
             call2_bid = strikes[strike2]['call'].get('bid', 0)
+            call1_symbol = strikes[strike1]['call'].get('symbol', '')
             
-            if call1_ask > 0 and call2_bid > 0:
+            if call1_ask > 0 and call2_bid > 0 and call1_symbol:
+                # FIX 1: Check ask quantity > 5 lots
+                ask_quantity = self.get_ask_quantity(call1_symbol)
+                
                 call_diff = call1_ask - call2_bid
-                if call_diff < 0 and abs(call_diff) >= DELTA_THRESHOLD["ETH"]:
+                if call_diff < 0 and abs(call_diff) >= DELTA_THRESHOLD["ETH"] and ask_quantity > 5:
                     alert_key = f"ETH_CALL_{strike1}_{strike2}_{self.active_expiry}"
                     if self.can_alert(alert_key):
                         profit = abs(call_diff)
                         expiry_display = format_expiry_display(self.active_expiry)
                         current_time = get_ist_time()
                         
-                        alert_msg = f"🔵 ETH Alert Call\n{strike1} (B) → {strike2} (S)\n${call1_ask:.2f}    ${call2_bid:.2f}\nProfit: ${profit:.2f}\n{expiry_display} | {current_time}"
+                        alert_msg = f"🔵 ETH Alert Call\n{strike1} (B) → {strike2} (S)\n${call1_ask:.2f}    ${call2_bid:.2f}\nProfit: ${profit:.2f}\nQuantity: {ask_quantity} lots\n{expiry_display} | {current_time}"
                         alerts.append(alert_msg)
             
-            # PUT arbitrage
-            put1_bid = strikes[strike1]['put'].get('bid', 0)
+            # PUT arbitrage - ADDED QUANTITY CHECK
             put2_ask = strikes[strike2]['put'].get('ask', 0)
+            put1_bid = strikes[strike1]['put'].get('bid', 0)
+            put2_symbol = strikes[strike2]['put'].get('symbol', '')
             
-            if put1_bid > 0 and put2_ask > 0:
+            if put1_bid > 0 and put2_ask > 0 and put2_symbol:
+                # FIX 1: Check ask quantity > 5 lots
+                ask_quantity = self.get_ask_quantity(put2_symbol)
+                
                 put_diff = put2_ask - put1_bid
-                if put_diff < 0 and abs(put_diff) >= DELTA_THRESHOLD["ETH"]:
+                if put_diff < 0 and abs(put_diff) >= DELTA_THRESHOLD["ETH"] and ask_quantity > 5:
                     alert_key = f"ETH_PUT_{strike1}_{strike2}_{self.active_expiry}"
                     if self.can_alert(alert_key):
                         profit = abs(put_diff)
                         expiry_display = format_expiry_display(self.active_expiry)
                         current_time = get_ist_time()
                         
-                        alert_msg = f"🔵 ETH Alert Put\n{strike2} (B) → {strike1} (S)\n${put2_ask:.2f}    ${put1_bid:.2f}\nProfit: ${profit:.2f}\n{expiry_display} | {current_time}"
+                        alert_msg = f"🔵 ETH Alert Put\n{strike2} (B) → {strike1} (S)\n${put2_ask:.2f}    ${put1_bid:.2f}\nProfit: ${profit:.2f}\nQuantity: {ask_quantity} lots\n{expiry_display} | {current_time}"
                         alerts.append(alert_msg)
         
         if alerts:
             for alert in alerts:
                 send_telegram(alert)
                 self.alert_count += 1
-                print(f"[{datetime.now()}] ✅ ETH: Sent arbitrage alert")
+                print(f"[{datetime.now()}] ✅ ETH: Sent arbitrage alert (with quantity check)")
 
     def subscribe_to_options(self):
         """Subscribe to ACTIVE ETH expiry options"""
@@ -651,6 +704,7 @@ class ETHWebSocketBot:
         self.active_symbols = symbols
         
         if symbols:
+            # Subscribe to both L1 and L2 orderbooks for quantity data
             payload = {
                 "type": "subscribe",
                 "payload": {
@@ -658,13 +712,17 @@ class ETHWebSocketBot:
                         {
                             "name": "l1_orderbook",
                             "symbols": symbols
+                        },
+                        {
+                            "name": "order_book",  # For quantity data
+                            "symbols": symbols
                         }
                     ]
                 }
             }
             
             self.ws.send(json.dumps(payload))
-            print(f"[{datetime.now()}] 📡 ETH: Subscribed to {len(symbols)} {self.active_expiry} expiry symbols")
+            print(f"[{datetime.now()}] 📡 ETH: Subscribed to {len(symbols)} {self.active_expiry} expiry symbols (L1 + L2)")
             
             current_time_str = get_ist_time()
             send_telegram(f"🔗 ETH Bot Connected\n\n📅 Monitoring: {self.active_expiry}\n📊 Symbols: {len(symbols)}\n⏰ Time: {current_time_str}\n\nETH Bot is now live! 🚀")
@@ -726,10 +784,7 @@ class BTCRESTBot:
         
         # New system data
         self.option_chain_data = {'calls': {}, 'puts': {}}
-        self.user_alerts_config = {
-            'btc_call': {'strike': 0, 'premium': 0, 'active': False},
-            'btc_put': {'strike': 0, 'premium': 0, 'active': False}
-        }
+        self.orderbook_data = {}  # For quantity checks
 
     def get_initial_active_expiry(self):
         """Determine which expiry should be active right now"""
@@ -823,6 +878,7 @@ class BTCRESTBot:
                     self.options_prices = {}
                     self.active_symbols = []
                     self.option_chain_data = {'calls': {}, 'puts': {}}
+                    self.orderbook_data = {}
                     
                     # Update alert configs with new expiry
                     for config_id in alert_configs:
@@ -846,6 +902,7 @@ class BTCRESTBot:
                     self.options_prices = {}
                     self.active_symbols = []
                     self.option_chain_data = {'calls': {}, 'puts': {}}
+                    self.orderbook_data = {}
                     
                     # Update alert configs
                     for config_id in alert_configs:
@@ -910,6 +967,43 @@ class BTCRESTBot:
         
         return []
 
+    def fetch_orderbook(self, symbol):
+        """Fetch orderbook for a specific symbol"""
+        try:
+            url = f"{self.base_url}/orderbook"
+            params = {'symbol': symbol}
+            response = requests.get(url, params=params, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success'):
+                    return data.get('result', {})
+        except Exception as e:
+            self.debug_log(f"⚠️ BTC: Error fetching orderbook for {symbol}: {e}")
+        
+        return {}
+
+    def get_ask_quantity(self, symbol):
+        """Get ask quantity from orderbook"""
+        try:
+            if symbol not in self.orderbook_data:
+                # Fetch orderbook if not cached
+                self.orderbook_data[symbol] = self.fetch_orderbook(symbol)
+            
+            orderbook = self.orderbook_data.get(symbol, {})
+            asks = orderbook.get('sell', [])
+            
+            if asks and len(asks) > 0:
+                best_ask = asks[0]
+                if isinstance(best_ask, list) and len(best_ask) >= 2:
+                    quantity = float(best_ask[1])
+                    return quantity
+            
+        except Exception as e:
+            self.debug_log(f"⚠️ BTC: Error getting ask quantity for {symbol}: {e}")
+        
+        return 0
+
     def process_btc_options(self):
         """Process BTC options for BOTH SYSTEMS"""
         tickers = self.fetch_tickers()
@@ -933,12 +1027,13 @@ class BTCRESTBot:
                 if expiry == self.active_expiry:
                     current_expiry_tickers.append(ticker)
                     
-                    # Store for System 2 dropdowns
+                    # Store for System 2 dropdowns - FIXED: Properly identify call/put
                     strike = self.extract_strike(symbol)
                     if strike > 0:
-                        if 'C-' in symbol:
+                        # Check if it's a call or put based on symbol prefix
+                        if symbol.startswith('C-'):
                             self.option_chain_data['calls'][strike] = symbol
-                        elif 'P-' in symbol:
+                        elif symbol.startswith('P-'):
                             self.option_chain_data['puts'][strike] = symbol
         
         # Sort strikes
@@ -947,7 +1042,8 @@ class BTCRESTBot:
         
         self.active_symbols = [t.get('symbol', '') for t in current_expiry_tickers]
         self.debug_log(f"📅 BTC: Found {len(current_expiry_tickers)} tickers for expiry {self.active_expiry}")
-        self.debug_log(f"📊 BTC: Call strikes: {len(self.option_chain_data['calls'])}, Put strikes: {len(self.option_chain_data['puts'])}")
+        self.debug_log(f"📊 BTC: Call strikes: {list(self.option_chain_data['calls'].keys())[:5]}... ({len(self.option_chain_data['calls'])})")
+        self.debug_log(f"📊 BTC: Put strikes: {list(self.option_chain_data['puts'].keys())[:5]}... ({len(self.option_chain_data['puts'])})")
         
         # Store prices for BOTH systems
         for ticker in current_expiry_tickers:
@@ -994,30 +1090,30 @@ class BTCRESTBot:
             ask = float(quotes.get('best_ask', 0)) or 0
             
             if strike not in grouped:
-                grouped[strike] = {'call': {'bid': 0, 'ask': 0}, 'put': {'bid': 0, 'ask': 0}}
+                grouped[strike] = {'call': {'bid': 0, 'ask': 0, 'symbol': ''}, 'put': {'bid': 0, 'ask': 0, 'symbol': ''}}
             
             if option_type == 'call':
                 grouped[strike]['call']['bid'] = bid
                 grouped[strike]['call']['ask'] = ask
+                grouped[strike]['call']['symbol'] = symbol
             else:  # put
                 grouped[strike]['put']['bid'] = bid
                 grouped[strike]['put']['ask'] = ask
+                grouped[strike]['put']['symbol'] = symbol
         
         self.debug_log(f"💰 BTC: Grouped {len(grouped)} strikes with valid prices")
         return grouped
 
     def check_user_alerts(self):
-        """SYSTEM 2: Check for user-configured BTC alerts"""
+        """SYSTEM 2: Check for user-configured BTC alerts - FIXED: Call/put separation"""
         if not new_system_active:
             return
         
-        current_time = datetime.now().timestamp()
-        
-        # Check BTC calls
+        # Check BTC calls - FIXED: Only check call options
         btc_call_config = alert_configs['btc_call']
         if btc_call_config.is_monitoring and btc_call_config.strike > 0 and btc_call_config.premium > 0:
             alerts = []
-            for strike, symbol in self.option_chain_data['calls'].items():
+            for strike, symbol in self.option_chain_data['calls'].items():  # Only call symbols
                 if strike > btc_call_config.strike:
                     price_data = self.options_prices.get(symbol)
                     if price_data and price_data['bid'] >= btc_call_config.premium:
@@ -1036,11 +1132,11 @@ class BTCRESTBot:
                 send_alert_triggered_telegram(alert)
                 print(f"[{datetime.now()}] 🚨 BTC CALL Alert: Strike {alert['trigger_strike']} bid ${alert['bid_price']:.2f} ≥ ${alert['threshold']:.2f}")
         
-        # Check BTC puts
+        # Check BTC puts - FIXED: Only check put options
         btc_put_config = alert_configs['btc_put']
         if btc_put_config.is_monitoring and btc_put_config.strike > 0 and btc_put_config.premium > 0:
             alerts = []
-            for strike, symbol in self.option_chain_data['puts'].items():
+            for strike, symbol in self.option_chain_data['puts'].items():  # Only put symbols
                 if strike < btc_put_config.strike:
                     price_data = self.options_prices.get(symbol)
                     if price_data and price_data['bid'] >= btc_put_config.premium:
@@ -1060,7 +1156,7 @@ class BTCRESTBot:
                 print(f"[{datetime.now()}] 🚨 BTC PUT Alert: Strike {alert['trigger_strike']} bid ${alert['bid_price']:.2f} ≥ ${alert['threshold']:.2f}")
 
     def check_arbitrage(self, grouped_data):
-        """SYSTEM 1: Check for arbitrage opportunities"""
+        """SYSTEM 1: Check for arbitrage opportunities with quantity check"""
         if not grouped_data:
             return []
             
@@ -1071,36 +1167,44 @@ class BTCRESTBot:
             strike1 = strikes[i]
             strike2 = strikes[i + 1]
             
-            # CALL arbitrage
+            # CALL arbitrage - ADDED QUANTITY CHECK
             call1_ask = grouped_data[strike1]['call']['ask']
             call2_bid = grouped_data[strike2]['call']['bid']
+            call1_symbol = grouped_data[strike1]['call']['symbol']
             
-            if call1_ask > 0 and call2_bid > 0:
+            if call1_ask > 0 and call2_bid > 0 and call1_symbol:
+                # FIX 1: Check ask quantity > 5 lots
+                ask_quantity = self.get_ask_quantity(call1_symbol)
+                
                 call_diff = call1_ask - call2_bid
-                if call_diff < 0 and abs(call_diff) >= DELTA_THRESHOLD["BTC"]:
+                if call_diff < 0 and abs(call_diff) >= DELTA_THRESHOLD["BTC"] and ask_quantity > 5:
                     alert_key = f"BTC_CALL_{strike1}_{strike2}"
                     if self.can_alert(alert_key):
                         profit = abs(call_diff)
                         expiry_display = format_expiry_display(self.active_expiry)
                         current_time = get_ist_time()
                         
-                        alert_msg = f"🔔 BTC Alert Call\n{strike1} (B) → {strike2} (S)\n${call1_ask:.2f}    ${call2_bid:.2f}\nProfit: ${profit:.2f}\n{expiry_display} | {current_time}"
+                        alert_msg = f"🔔 BTC Alert Call\n{strike1} (B) → {strike2} (S)\n${call1_ask:.2f}    ${call2_bid:.2f}\nProfit: ${profit:.2f}\nQuantity: {ask_quantity} lots\n{expiry_display} | {current_time}"
                         alerts.append(alert_msg)
             
-            # PUT arbitrage
-            put1_bid = grouped_data[strike1]['put']['bid']
+            # PUT arbitrage - ADDED QUANTITY CHECK
             put2_ask = grouped_data[strike2]['put']['ask']
+            put1_bid = grouped_data[strike1]['put']['bid']
+            put2_symbol = grouped_data[strike2]['put']['symbol']
             
-            if put1_bid > 0 and put2_ask > 0:
+            if put1_bid > 0 and put2_ask > 0 and put2_symbol:
+                # FIX 1: Check ask quantity > 5 lots
+                ask_quantity = self.get_ask_quantity(put2_symbol)
+                
                 put_diff = put2_ask - put1_bid
-                if put_diff < 0 and abs(put_diff) >= DELTA_THRESHOLD["BTC"]:
+                if put_diff < 0 and abs(put_diff) >= DELTA_THRESHOLD["BTC"] and ask_quantity > 5:
                     alert_key = f"BTC_PUT_{strike1}_{strike2}"
                     if self.can_alert(alert_key):
                         profit = abs(put_diff)
                         expiry_display = format_expiry_display(self.active_expiry)
                         current_time = get_ist_time()
                         
-                        alert_msg = f"🔔 BTC Alert Put\n{strike2} (B) → {strike1} (S)\n${put2_ask:.2f}    ${put1_bid:.2f}\nProfit: ${profit:.2f}\n{expiry_display} | {current_time}"
+                        alert_msg = f"🔔 BTC Alert Put\n{strike2} (B) → {strike1} (S)\n${put2_ask:.2f}    ${put1_bid:.2f}\nProfit: ${profit:.2f}\nQuantity: {ask_quantity} lots\n{expiry_display} | {current_time}"
                         alerts.append(alert_msg)
         
         return alerts
@@ -1134,15 +1238,15 @@ class BTCRESTBot:
                 
                 # Check BOTH systems
                 if current_time - self.last_arbitrage_check >= PROCESS_INTERVAL:
-                    # SYSTEM 1: Original arbitrage logic
+                    # SYSTEM 1: Original arbitrage logic with quantity check
                     alerts = self.check_arbitrage(grouped_data)
                     if alerts:
                         for alert in alerts:
                             send_telegram(alert)
                             self.alert_count += 1
-                            self.debug_log(f"✅ BTC: Sent arbitrage alert")
+                            self.debug_log(f"✅ BTC: Sent arbitrage alert (with quantity check)")
                     
-                    # SYSTEM 2: New user alert logic
+                    # SYSTEM 2: New user alert logic - FIXED: Proper call/put separation
                     self.check_user_alerts()
                     
                     self.last_arbitrage_check = current_time
@@ -1525,7 +1629,7 @@ HTML_TEMPLATE = '''
         <!-- Tab 1: Arbitrage System -->
         <div id="arbitrage-tab" class="tab-content active">
             <div class="system-section">
-                <h2 class="section-title">⚡ Arbitrage Alert System</h2>
+                <h2 class="section-title">⚡ Arbitrage Alert System (with Quantity Check > 5 lots)</h2>
                 
                 <div class="stats-grid">
                     <!-- ETH Stats Card -->
@@ -1609,7 +1713,7 @@ HTML_TEMPLATE = '''
         <!-- Tab 2: Option Alerts System -->
         <div id="option-alerts-tab" class="tab-content">
             <div class="system-section">
-                <h2 class="section-title">🎯 Option Strike Alert System</h2>
+                <h2 class="section-title">🎯 Option Strike Alert System (Fixed Call/Put Separation)</h2>
                 <p style="margin-bottom: 20px; color: #666;">Configure alerts for specific strikes and premiums</p>
                 
                 <form action="/activate_alerts" method="POST">
@@ -1633,6 +1737,7 @@ HTML_TEMPLATE = '''
                                        {% if alert_configs['btc_call'].is_monitoring %}checked{% endif %}>
                                 <label for="btc_call_monitor">Monitor BTC Calls</label>
                             </div>
+                            <small style="color: #666;">Found {{ btc_bot.option_chain_data.calls|length }} call strikes</small>
                         </div>
                         
                         <!-- BTC PUT Card -->
@@ -1654,6 +1759,7 @@ HTML_TEMPLATE = '''
                                        {% if alert_configs['btc_put'].is_monitoring %}checked{% endif %}>
                                 <label for="btc_put_monitor">Monitor BTC Puts</label>
                             </div>
+                            <small style="color: #666;">Found {{ btc_bot.option_chain_data.puts|length }} put strikes</small>
                         </div>
                         
                         <!-- ETH CALL Card -->
@@ -1664,7 +1770,7 @@ HTML_TEMPLATE = '''
                                 {% for strike in eth_bot.option_chain_data.calls.keys()|sort %}
                                 <option value="{{ strike }}" {% if alert_configs['eth_call'].strike == strike %}selected{% endif %}>
                                     {{ strike }}
-                                </option>
+                                                               </option>
                                 {% endfor %}
                             </select>
                             <input type="number" name="eth_call_premium" placeholder="Premium ($)" 
@@ -1675,6 +1781,7 @@ HTML_TEMPLATE = '''
                                        {% if alert_configs['eth_call'].is_monitoring %}checked{% endif %}>
                                 <label for="eth_call_monitor">Monitor ETH Calls</label>
                             </div>
+                            <small style="color: #666;">Found {{ eth_bot.option_chain_data.calls|length }} call strikes</small>
                         </div>
                         
                         <!-- ETH PUT Card -->
@@ -1696,6 +1803,7 @@ HTML_TEMPLATE = '''
                                        {% if alert_configs['eth_put'].is_monitoring %}checked{% endif %}>
                                 <label for="eth_put_monitor">Monitor ETH Puts</label>
                             </div>
+                            <small style="color: #666;">Found {{ eth_bot.option_chain_data.puts|length }} put strikes</small>
                         </div>
                     </div>
                     
@@ -1998,8 +2106,10 @@ def start_bots():
     print(f"⚡ System 1: Arbitrage Alerts")
     print(f"   • ETH Threshold: ${DELTA_THRESHOLD['ETH']:.2f}")
     print(f"   • BTC Threshold: ${DELTA_THRESHOLD['BTC']:.2f}")
+    print(f"   • Quantity Check: Ask > 5 lots")
     print(f"🎯 System 2: Option Strike Alerts")
     print(f"   • 4 independent sections")
+    print(f"   • Fixed call/put separation")
     print(f"   • Telegram alerts on updates")
     print(f"📅 Current expiry: {get_current_expiry()}")
     print(f"🔄 Auto-expiry at 5:30 PM IST")
@@ -2022,3 +2132,4 @@ if __name__ == "__main__":
     print(f"[{datetime.now()}] 🌐 Website: http://localhost:{port}")
     print(f"[{datetime.now()}] 🚀 Starting web server on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+                                
