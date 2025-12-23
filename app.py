@@ -68,7 +68,7 @@ class SpikeConfig:
 # System 3 configuration
 spike_config = SpikeConfig()
 
-# System 3 data storage
+# System 3 data storage - GLOBAL DECLARATION
 price_history = {}  # symbol: [last 10 prices]
 last_spike_alert = {}  # symbol: timestamp
 system3_spikes_detected = 0
@@ -221,6 +221,8 @@ def send_spike_alert_telegram(symbol: str, current_price: float, historical_avg:
 # -------------------------------
 def check_premium_spikes_eth(eth_bot):
     """Check for premium spikes in ETH options"""
+    global price_history, last_spike_alert, system3_spikes_detected
+    
     if not spike_config.enabled or not spike_config.monitor_eth:
         return
     
@@ -260,11 +262,12 @@ def check_premium_spikes_eth(eth_bot):
                         # Send alert
                         send_spike_alert_telegram(symbol, current_bid, historical_avg, spike_percent)
                         last_spike_alert[symbol] = now
-                        global system3_spikes_detected
                         system3_spikes_detected += 1
 
 def check_premium_spikes_btc(btc_bot):
     """Check for premium spikes in BTC options"""
+    global price_history, last_spike_alert, system3_spikes_detected
+    
     if not spike_config.enabled or not spike_config.monitor_btc:
         return
     
@@ -304,7 +307,6 @@ def check_premium_spikes_btc(btc_bot):
                         # Send alert
                         send_spike_alert_telegram(symbol, current_bid, historical_avg, spike_percent)
                         last_spike_alert[symbol] = now
-                        global system3_spikes_detected
                         system3_spikes_detected += 1
 
 def should_monitor_symbol(symbol: str) -> bool:
@@ -418,6 +420,8 @@ class ETHWebSocketBot:
 
     def check_and_update_expiry(self):
         """Check if we need to update the active expiry"""
+        global price_history
+        
         current_time = datetime.now().timestamp()
         if current_time - self.last_expiry_check >= EXPIRY_CHECK_INTERVAL:
             self.last_expiry_check = current_time
@@ -448,7 +452,6 @@ class ETHWebSocketBot:
                             alert_configs[config_id].active_expiry = self.active_expiry
                     
                     # Clear price history for old expiry symbols
-                    global price_history
                     old_symbols = [s for s in price_history.keys() if 'ETH' in s]
                     for symbol in old_symbols:
                         if symbol in price_history:
@@ -482,7 +485,6 @@ class ETHWebSocketBot:
                             alert_configs[config_id].active_expiry = self.active_expiry
                     
                     # Clear price history for old expiry symbols
-                    global price_history
                     old_symbols = [s for s in price_history.keys() if 'ETH' in s]
                     for symbol in old_symbols:
                         if symbol in price_history:
@@ -1029,6 +1031,8 @@ class BTCRESTBot:
 
     def check_and_update_expiry(self):
         """Check if we need to update the active expiry"""
+        global price_history
+        
         current_time = datetime.now().timestamp()
         if current_time - self.last_expiry_check >= EXPIRY_CHECK_INTERVAL:
             self.last_expiry_check = current_time
@@ -1059,7 +1063,6 @@ class BTCRESTBot:
                             alert_configs[config_id].active_expiry = self.active_expiry
                     
                     # Clear price history for old expiry symbols
-                    global price_history
                     old_symbols = [s for s in price_history.keys() if 'BTC' in s]
                     for symbol in old_symbols:
                         if symbol in price_history:
@@ -1090,7 +1093,6 @@ class BTCRESTBot:
                             alert_configs[config_id].active_expiry = self.active_expiry
                     
                     # Clear price history for old expiry symbols
-                    global price_history
                     old_symbols = [s for s in price_history.keys() if 'BTC' in s]
                     for symbol in old_symbols:
                         if symbol in price_history:
@@ -1461,7 +1463,7 @@ eth_bot = ETHWebSocketBot()
 btc_bot = BTCRESTBot()
 
 # -------------------------------
-# HTML Template
+# HTML Template (SAME AS BEFORE - just showing the Flask routes section)
 # -------------------------------
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -1864,14 +1866,14 @@ HTML_TEMPLATE = '''
         
         .save-btn:hover {
             background: #2980b9;
-            transform: translateY(-2px);
+                       transform: translateY(-2px);
         }
         
         .footer {
             text-align: center;
             padding: 20px;
             color: #6c757d;
-                       border-top: 1px solid #e9ecef;
+            border-top: 1px solid #e9ecef;
             margin-top: 30px;
         }
         
@@ -2296,7 +2298,7 @@ def home():
 @app.route('/activate_alerts', methods=['POST'])
 def activate_alerts():
     """Activate System 2: Option alerts"""
-    global new_system_active, previous_configs, alert_configs
+    global new_system_active, alert_configs
     
     try:
         # Store old configs for comparison
