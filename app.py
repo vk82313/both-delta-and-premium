@@ -27,7 +27,7 @@ EXPIRY_CHECK_INTERVAL = 60
 BTC_FETCH_INTERVAL = 1
 
 # -------------------------------
-# New System Configuration
+# System 2: Option Alert Configuration
 # -------------------------------
 @dataclass
 class AlertConfig:
@@ -37,7 +37,7 @@ class AlertConfig:
     last_updated: str = ""
     active_expiry: str = ""
 
-# Store alert configurations for new system
+# Store alert configurations for System 2
 alert_configs = {
     'btc_call': AlertConfig(),
     'btc_put': AlertConfig(),
@@ -48,9 +48,30 @@ alert_configs = {
 # Store previous configs to detect changes
 previous_configs = {}
 
-# Global monitoring status
+# System 2 monitoring status
 new_system_active = False
 last_check_time = None
+
+# -------------------------------
+# System 3: Premium Spike Detection Configuration
+# -------------------------------
+@dataclass
+class SpikeConfig:
+    enabled: bool = False
+    min_spike_percent: float = 100.0  # Minimum 100% spike to alert
+    cooldown_seconds: int = 300       # 5 minutes cooldown between alerts for same symbol
+    monitor_eth: bool = True
+    monitor_btc: bool = True
+    monitor_calls: bool = True
+    monitor_puts: bool = True
+
+# System 3 configuration
+spike_config = SpikeConfig()
+
+# System 3 data storage
+price_history = {}  # symbol: [last 10 prices]
+last_spike_alert = {}  # symbol: timestamp
+system3_spikes_detected = 0
 
 # -------------------------------
 # Utility Functions
@@ -170,8 +191,141 @@ def send_alert_triggered_telegram(alert_data: Dict):
     
     send_telegram(message)
 
+def send_spike_alert_telegram(symbol: str, current_price: float, historical_avg: float, spike_percent: float):
+    """Send Telegram message for premium spike"""
+    # Extract symbol info
+    parts = symbol.split('-')
+    asset = "BTC" if "BTC" in symbol else "ETH"
+    option_type = "CALL" if parts[0] == "C" else "PUT"
+    strike = parts[2] if len(parts) > 2 else "Unknown"
+    
+    message = f"""
+🚨 **PREMIUM SPIKE DETECTED!**
+
+**{asset} {strike} {option_type}**
+**Time:** {get_ist_time()}
+
+**Price History:**
+• Previous average: ${historical_avg:.2f}
+• Current bid: ${current_price:.2f}
+• Spike: +{spike_percent:.1f}%
+
+**Alert:** Premium DOUBLED instantly!
+"""
+    
+    send_telegram(message)
+    print(f"[{datetime.now()}] 🚨 Spike alert sent for {symbol}: ${historical_avg:.2f} → ${current_price:.2f} (+{spike_percent:.1f}%)")
+
 # -------------------------------
-# Combined ETH WebSocket Bot (Both Systems)
+# System 3: Premium Spike Detection Functions
+# -------------------------------
+def check_premium_spikes_eth(eth_bot):
+    """Check for premium spikes in ETH options"""
+    if not spike_config.enabled or not spike_config.monitor_eth:
+        return
+    
+    for symbol, price_data in eth_bot.options_prices.items():
+        # Check if we should monitor this symbol type
+        if not should_monitor_symbol(symbol):
+            continue
+        
+        current_bid = price_data['bid']
+        if current_bid <= 0:
+            continue
+        
+        # Initialize price history for this symbol
+        if symbol not in price_history:
+            price_history[symbol] = []
+        
+        # Add current price to history
+        price_history[symbol].append(current_bid)
+        
+        # Keep only last 10 prices
+        if len(price_history[symbol]) > 10:
+            price_history[symbol] = price_history[symbol][-10:]
+        
+        # Need at least 5 prices for meaningful average
+        if len(price_history[symbol]) >= 5:
+            historical_avg = sum(price_history[symbol][:-1]) / (len(price_history[symbol]) - 1)
+            
+            if historical_avg > 0:
+                spike_percent = ((current_bid - historical_avg) / historical_avg) * 100
+                
+                if spike_percent >= spike_config.min_spike_percent:
+                    # Check cooldown
+                    now = datetime.now().timestamp()
+                    last_alert = last_spike_alert.get(symbol, 0)
+                    
+                    if now - last_alert >= spike_config.cooldown_seconds:
+                        # Send alert
+                        send_spike_alert_telegram(symbol, current_bid, historical_avg, spike_percent)
+                        last_spike_alert[symbol] = now
+                        global system3_spikes_detected
+                        system3_spikes_detected += 1
+
+def check_premium_spikes_btc(btc_bot):
+    """Check for premium spikes in BTC options"""
+    if not spike_config.enabled or not spike_config.monitor_btc:
+        return
+    
+    for symbol, price_data in btc_bot.options_prices.items():
+        # Check if we should monitor this symbol type
+        if not should_monitor_symbol(symbol):
+            continue
+        
+        current_bid = price_data['bid']
+        if current_bid <= 0:
+            continue
+        
+        # Initialize price history for this symbol
+        if symbol not in price_history:
+            price_history[symbol] = []
+        
+        # Add current price to history
+        price_history[symbol].append(current_bid)
+        
+        # Keep only last 10 prices
+        if len(price_history[symbol]) > 10:
+            price_history[symbol] = price_history[symbol][-10:]
+        
+        # Need at least 5 prices for meaningful average
+        if len(price_history[symbol]) >= 5:
+            historical_avg = sum(price_history[symbol][:-1]) / (len(price_history[symbol]) - 1)
+            
+            if historical_avg > 0:
+                spike_percent = ((current_bid - historical_avg) / historical_avg) * 100
+                
+                if spike_percent >= spike_config.min_spike_percent:
+                    # Check cooldown
+                    now = datetime.now().timestamp()
+                    last_alert = last_spike_alert.get(symbol, 0)
+                    
+                    if now - last_alert >= spike_config.cooldown_seconds:
+                        # Send alert
+                        send_spike_alert_telegram(symbol, current_bid, historical_avg, spike_percent)
+                        last_spike_alert[symbol] = now
+                        global system3_spikes_detected
+                        system3_spikes_detected += 1
+
+def should_monitor_symbol(symbol: str) -> bool:
+    """Check if symbol should be monitored based on config"""
+    if "BTC" in symbol and not spike_config.monitor_btc:
+        return False
+    if "ETH" in symbol and not spike_config.monitor_eth:
+        return False
+    
+    parts = symbol.split('-')
+    if len(parts) > 0:
+        option_type = parts[0]
+        if option_type == "C" and not spike_config.monitor_calls:
+            return False
+        if option_type == "P" and not spike_config.monitor_puts:
+            return False
+    
+    return True
+
+# -------------------------------
+# Combined ETH WebSocket Bot (Systems 1, 2 & 3)
 # -------------------------------
 class ETHWebSocketBot:
     def __init__(self):
@@ -190,8 +344,9 @@ class ETHWebSocketBot:
         self.expiry_rollover_count = 0
         self.alert_count = 0
         self.last_user_alert_check = 0
+        self.last_spike_check = 0
         
-        # New system data
+        # System 2 data
         self.option_chain_data = {'calls': {}, 'puts': {}}
         self.orderbook_data = {}  # Store orderbook data for quantity checks
 
@@ -281,7 +436,7 @@ class ETHWebSocketBot:
                     self.active_expiry = actual_next_expiry
                     self.expiry_rollover_count += 1
                     
-                    # Clear both systems' data
+                    # Clear all systems' data
                     self.options_prices = {}
                     self.active_symbols = []
                     self.option_chain_data = {'calls': {}, 'puts': {}}
@@ -291,6 +446,13 @@ class ETHWebSocketBot:
                     for config_id in alert_configs:
                         if alert_configs[config_id].is_monitoring:
                             alert_configs[config_id].active_expiry = self.active_expiry
+                    
+                    # Clear price history for old expiry symbols
+                    global price_history
+                    old_symbols = [s for s in price_history.keys() if 'ETH' in s]
+                    for symbol in old_symbols:
+                        if symbol in price_history:
+                            del price_history[symbol]
                     
                     if self.connected and self.ws:
                         self.subscribe_to_options()
@@ -318,6 +480,13 @@ class ETHWebSocketBot:
                     for config_id in alert_configs:
                         if alert_configs[config_id].is_monitoring:
                             alert_configs[config_id].active_expiry = self.active_expiry
+                    
+                    # Clear price history for old expiry symbols
+                    global price_history
+                    old_symbols = [s for s in price_history.keys() if 'ETH' in s]
+                    for symbol in old_symbols:
+                        if symbol in price_history:
+                            del price_history[symbol]
                     
                     if self.connected and self.ws:
                         self.subscribe_to_options()
@@ -435,7 +604,7 @@ class ETHWebSocketBot:
         print(f"[{datetime.now()}] ❌ ETH: WebSocket error: {error}")
 
     def on_message(self, ws, message):
-        """Handle incoming WebSocket messages - BOTH SYSTEMS"""
+        """Handle incoming WebSocket messages - ALL SYSTEMS"""
         try:
             # Check expiry rollover
             self.check_and_update_expiry()
@@ -503,7 +672,7 @@ class ETHWebSocketBot:
         return 0
 
     def process_l1_orderbook_data(self, message):
-        """Process l1_orderbook data - BOTH SYSTEMS USE THIS"""
+        """Process l1_orderbook data - ALL SYSTEMS USE THIS"""
         try:
             symbol = message.get('symbol')
             best_bid = message.get('best_bid')
@@ -520,7 +689,7 @@ class ETHWebSocketBot:
                 best_bid_price = float(best_bid) if best_bid else 0
                 best_ask_price = float(best_ask) if best_ask else 0
                 
-                # Store data for BOTH systems
+                # Store data for ALL systems
                 self.options_prices[symbol] = {
                     'bid': best_bid_price,
                     'ask': best_ask_price,
@@ -529,13 +698,16 @@ class ETHWebSocketBot:
                 
                 current_time = datetime.now().timestamp()
                 
-                # Check BOTH systems (every 2 seconds)
+                # Check ALL systems (every 2 seconds)
                 if current_time - self.last_arbitrage_check >= PROCESS_INTERVAL:
                     # SYSTEM 1: Original arbitrage logic
                     self.check_arbitrage_opportunities()
                     
-                    # SYSTEM 2: New user alert logic
+                    # SYSTEM 2: User alert logic
                     self.check_user_alerts()
+                    
+                    # SYSTEM 3: Premium spike detection
+                    check_premium_spikes_eth(self)
                     
                     self.last_arbitrage_check = current_time
                     global last_check_time
@@ -549,11 +721,11 @@ class ETHWebSocketBot:
         if not new_system_active:
             return
         
-        # Check ETH calls - FIXED: Only check call options for call alerts
+        # Check ETH calls
         eth_call_config = alert_configs['eth_call']
         if eth_call_config.is_monitoring and eth_call_config.strike > 0 and eth_call_config.premium > 0:
             alerts = []
-            for strike, symbol in self.option_chain_data['calls'].items():  # Only call symbols
+            for strike, symbol in self.option_chain_data['calls'].items():
                 if strike > eth_call_config.strike:
                     price_data = self.options_prices.get(symbol)
                     if price_data and price_data['bid'] >= eth_call_config.premium:
@@ -572,11 +744,11 @@ class ETHWebSocketBot:
                 send_alert_triggered_telegram(alert)
                 print(f"[{datetime.now()}] 🚨 ETH CALL Alert: Strike {alert['trigger_strike']} bid ${alert['bid_price']:.2f} ≥ ${alert['threshold']:.2f}")
         
-        # Check ETH puts - FIXED: Only check put options for put alerts
+        # Check ETH puts
         eth_put_config = alert_configs['eth_put']
         if eth_put_config.is_monitoring and eth_put_config.strike > 0 and eth_put_config.premium > 0:
             alerts = []
-            for strike, symbol in self.option_chain_data['puts'].items():  # Only put symbols
+            for strike, symbol in self.option_chain_data['puts'].items():
                 if strike < eth_put_config.strike:
                     price_data = self.options_prices.get(symbol)
                     if price_data and price_data['bid'] >= eth_put_config.premium:
@@ -647,13 +819,13 @@ class ETHWebSocketBot:
             strike1 = sorted_strikes[i]
             strike2 = sorted_strikes[i + 1]
             
-            # CALL arbitrage - ADDED QUANTITY CHECK
+            # CALL arbitrage
             call1_ask = strikes[strike1]['call'].get('ask', 0)
             call2_bid = strikes[strike2]['call'].get('bid', 0)
             call1_symbol = strikes[strike1]['call'].get('symbol', '')
             
             if call1_ask > 0 and call2_bid > 0 and call1_symbol:
-                # FIX 1: Check ask quantity > 5 lots
+                # Check ask quantity > 5 lots
                 ask_quantity = self.get_ask_quantity(call1_symbol)
                 
                 call_diff = call1_ask - call2_bid
@@ -667,13 +839,13 @@ class ETHWebSocketBot:
                         alert_msg = f"🔵 ETH Alert Call\n{strike1} (B) → {strike2} (S)\n${call1_ask:.2f}    ${call2_bid:.2f}\nProfit: ${profit:.2f}\nQuantity: {ask_quantity} lots\n{expiry_display} | {current_time}"
                         alerts.append(alert_msg)
             
-            # PUT arbitrage - ADDED QUANTITY CHECK
+            # PUT arbitrage
             put2_ask = strikes[strike2]['put'].get('ask', 0)
             put1_bid = strikes[strike1]['put'].get('bid', 0)
             put2_symbol = strikes[strike2]['put'].get('symbol', '')
             
             if put1_bid > 0 and put2_ask > 0 and put2_symbol:
-                # FIX 1: Check ask quantity > 5 lots
+                # Check ask quantity > 5 lots
                 ask_quantity = self.get_ask_quantity(put2_symbol)
                 
                 put_diff = put2_ask - put1_bid
@@ -764,7 +936,7 @@ class ETHWebSocketBot:
         print(f"[{datetime.now()}] ✅ ETH: Bot thread started")
 
 # -------------------------------
-# Combined BTC REST API Bot (Both Systems)
+# Combined BTC REST API Bot (Systems 1, 2 & 3)
 # -------------------------------
 class BTCRESTBot:
     def __init__(self):
@@ -781,8 +953,9 @@ class BTCRESTBot:
         self.last_debug_log = 0
         self.options_prices = {}
         self.last_arbitrage_check = 0
+        self.last_spike_check = 0
         
-        # New system data
+        # System 2 data
         self.option_chain_data = {'calls': {}, 'puts': {}}
         self.orderbook_data = {}  # For quantity checks
 
@@ -874,7 +1047,7 @@ class BTCRESTBot:
                     self.active_expiry = actual_next_expiry
                     self.expiry_rollover_count += 1
                     
-                    # Clear both systems' data
+                    # Clear all systems' data
                     self.options_prices = {}
                     self.active_symbols = []
                     self.option_chain_data = {'calls': {}, 'puts': {}}
@@ -884,6 +1057,13 @@ class BTCRESTBot:
                     for config_id in alert_configs:
                         if alert_configs[config_id].is_monitoring:
                             alert_configs[config_id].active_expiry = self.active_expiry
+                    
+                    # Clear price history for old expiry symbols
+                    global price_history
+                    old_symbols = [s for s in price_history.keys() if 'BTC' in s]
+                    for symbol in old_symbols:
+                        if symbol in price_history:
+                            del price_history[symbol]
                     
                     send_telegram(f"🔄 BTC Expiry Rollover Complete!\n\n📅 Now monitoring: {self.active_expiry}\n⏰ Time: {current_time_str}")
                     return True
@@ -908,6 +1088,13 @@ class BTCRESTBot:
                     for config_id in alert_configs:
                         if alert_configs[config_id].is_monitoring:
                             alert_configs[config_id].active_expiry = self.active_expiry
+                    
+                    # Clear price history for old expiry symbols
+                    global price_history
+                    old_symbols = [s for s in price_history.keys() if 'BTC' in s]
+                    for symbol in old_symbols:
+                        if symbol in price_history:
+                            del price_history[symbol]
                     
                     send_telegram(f"🔄 BTC Expiry Update!\n\n📅 Now monitoring: {self.active_expiry}\n⏰ Time: {current_time_str}")
                     return True
@@ -1005,7 +1192,7 @@ class BTCRESTBot:
         return 0
 
     def process_btc_options(self):
-        """Process BTC options for BOTH SYSTEMS"""
+        """Process BTC options for ALL SYSTEMS"""
         tickers = self.fetch_tickers()
         if not tickers:
             self.debug_log("❌ BTC: No tickers received")
@@ -1027,7 +1214,7 @@ class BTCRESTBot:
                 if expiry == self.active_expiry:
                     current_expiry_tickers.append(ticker)
                     
-                    # Store for System 2 dropdowns - FIXED: Properly identify call/put
+                    # Store for System 2 dropdowns
                     strike = self.extract_strike(symbol)
                     if strike > 0:
                         # Check if it's a call or put based on symbol prefix
@@ -1042,10 +1229,8 @@ class BTCRESTBot:
         
         self.active_symbols = [t.get('symbol', '') for t in current_expiry_tickers]
         self.debug_log(f"📅 BTC: Found {len(current_expiry_tickers)} tickers for expiry {self.active_expiry}")
-        self.debug_log(f"📊 BTC: Call strikes: {list(self.option_chain_data['calls'].keys())[:5]}... ({len(self.option_chain_data['calls'])})")
-        self.debug_log(f"📊 BTC: Put strikes: {list(self.option_chain_data['puts'].keys())[:5]}... ({len(self.option_chain_data['puts'])})")
         
-        # Store prices for BOTH systems
+        # Store prices for ALL systems
         for ticker in current_expiry_tickers:
             symbol = ticker.get('symbol', '')
             quotes = ticker.get('quotes', {})
@@ -1105,15 +1290,15 @@ class BTCRESTBot:
         return grouped
 
     def check_user_alerts(self):
-        """SYSTEM 2: Check for user-configured BTC alerts - FIXED: Call/put separation"""
+        """SYSTEM 2: Check for user-configured BTC alerts"""
         if not new_system_active:
             return
         
-        # Check BTC calls - FIXED: Only check call options
+        # Check BTC calls
         btc_call_config = alert_configs['btc_call']
         if btc_call_config.is_monitoring and btc_call_config.strike > 0 and btc_call_config.premium > 0:
             alerts = []
-            for strike, symbol in self.option_chain_data['calls'].items():  # Only call symbols
+            for strike, symbol in self.option_chain_data['calls'].items():
                 if strike > btc_call_config.strike:
                     price_data = self.options_prices.get(symbol)
                     if price_data and price_data['bid'] >= btc_call_config.premium:
@@ -1132,11 +1317,11 @@ class BTCRESTBot:
                 send_alert_triggered_telegram(alert)
                 print(f"[{datetime.now()}] 🚨 BTC CALL Alert: Strike {alert['trigger_strike']} bid ${alert['bid_price']:.2f} ≥ ${alert['threshold']:.2f}")
         
-        # Check BTC puts - FIXED: Only check put options
+        # Check BTC puts
         btc_put_config = alert_configs['btc_put']
         if btc_put_config.is_monitoring and btc_put_config.strike > 0 and btc_put_config.premium > 0:
             alerts = []
-            for strike, symbol in self.option_chain_data['puts'].items():  # Only put symbols
+            for strike, symbol in self.option_chain_data['puts'].items():
                 if strike < btc_put_config.strike:
                     price_data = self.options_prices.get(symbol)
                     if price_data and price_data['bid'] >= btc_put_config.premium:
@@ -1167,13 +1352,13 @@ class BTCRESTBot:
             strike1 = strikes[i]
             strike2 = strikes[i + 1]
             
-            # CALL arbitrage - ADDED QUANTITY CHECK
+            # CALL arbitrage
             call1_ask = grouped_data[strike1]['call']['ask']
             call2_bid = grouped_data[strike2]['call']['bid']
             call1_symbol = grouped_data[strike1]['call']['symbol']
             
             if call1_ask > 0 and call2_bid > 0 and call1_symbol:
-                # FIX 1: Check ask quantity > 5 lots
+                # Check ask quantity > 5 lots
                 ask_quantity = self.get_ask_quantity(call1_symbol)
                 
                 call_diff = call1_ask - call2_bid
@@ -1187,13 +1372,13 @@ class BTCRESTBot:
                         alert_msg = f"🔔 BTC Alert Call\n{strike1} (B) → {strike2} (S)\n${call1_ask:.2f}    ${call2_bid:.2f}\nProfit: ${profit:.2f}\nQuantity: {ask_quantity} lots\n{expiry_display} | {current_time}"
                         alerts.append(alert_msg)
             
-            # PUT arbitrage - ADDED QUANTITY CHECK
+            # PUT arbitrage
             put2_ask = grouped_data[strike2]['put']['ask']
             put1_bid = grouped_data[strike1]['put']['bid']
             put2_symbol = grouped_data[strike2]['put']['symbol']
             
             if put1_bid > 0 and put2_ask > 0 and put2_symbol:
-                # FIX 1: Check ask quantity > 5 lots
+                # Check ask quantity > 5 lots
                 ask_quantity = self.get_ask_quantity(put2_symbol)
                 
                 put_diff = put2_ask - put1_bid
@@ -1231,12 +1416,12 @@ class BTCRESTBot:
                 # Check expiry rollover
                 self.check_and_update_expiry()
                 
-                # Process data for BOTH systems
+                # Process data for ALL systems
                 grouped_data = self.process_btc_options()
                 
                 current_time = datetime.now().timestamp()
                 
-                # Check BOTH systems
+                # Check ALL systems
                 if current_time - self.last_arbitrage_check >= PROCESS_INTERVAL:
                     # SYSTEM 1: Original arbitrage logic with quantity check
                     alerts = self.check_arbitrage(grouped_data)
@@ -1246,8 +1431,11 @@ class BTCRESTBot:
                             self.alert_count += 1
                             self.debug_log(f"✅ BTC: Sent arbitrage alert (with quantity check)")
                     
-                    # SYSTEM 2: New user alert logic - FIXED: Proper call/put separation
+                    # SYSTEM 2: User alert logic
                     self.check_user_alerts()
+                    
+                    # SYSTEM 3: Premium spike detection
+                    check_premium_spikes_btc(self)
                     
                     self.last_arbitrage_check = current_time
                     global last_check_time
@@ -1281,7 +1469,7 @@ HTML_TEMPLATE = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dual Alert System</title>
+    <title>Triple Alert System</title>
     <style>
         * {
             margin: 0;
@@ -1575,11 +1763,115 @@ HTML_TEMPLATE = '''
             color: #e74c3c;
         }
         
+        /* System 3 Styles */
+        .spike-control-panel {
+            background: linear-gradient(135deg, #ff6b6b, #ff8e53);
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            color: white;
+        }
+        
+        .spike-control-panel h3 {
+            color: white;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+        
+        .control-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .start-btn {
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            background: #2ecc71;
+            color: white;
+            flex: 1;
+        }
+        
+        .stop-btn {
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            background: #e74c3c;
+            color: white;
+            flex: 1;
+        }
+        
+        .start-btn:hover {
+            background: #27ae60;
+            transform: translateY(-2px);
+        }
+        
+        .stop-btn:hover {
+            background: #c0392b;
+            transform: translateY(-2px);
+        }
+        
+        .config-section {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .config-section h4 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.3rem;
+        }
+        
+        .config-row {
+            margin-bottom: 20px;
+        }
+        
+        .config-row label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+        
+        .checkbox-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .save-btn {
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            background: #3498db;
+            color: white;
+            width: 100%;
+            margin-top: 20px;
+        }
+        
+        .save-btn:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+        }
+        
         .footer {
             text-align: center;
             padding: 20px;
             color: #6c757d;
-            border-top: 1px solid #e9ecef;
+                       border-top: 1px solid #e9ecef;
             margin-top: 30px;
         }
         
@@ -1604,19 +1896,28 @@ HTML_TEMPLATE = '''
             .option-section {
                 grid-template-columns: 1fr;
             }
+            
+            .control-buttons {
+                flex-direction: column;
+            }
+            
+            .checkbox-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🚀 Dual Alert System</h1>
-            <div class="subtitle">Arbitrage Alerts + Option Strike Alerts - Running Simultaneously</div>
+            <h1>🚀 Triple Alert System</h1>
+            <div class="subtitle">Arbitrage + Option Alerts + Premium Spike Detection</div>
         </div>
         
         <div class="tabs">
             <button class="tab-btn active" onclick="showTab('arbitrage')">Arbitrage System</button>
             <button class="tab-btn" onclick="showTab('option-alerts')">Option Alerts</button>
+            <button class="tab-btn" onclick="showTab('spike-detector')">Spike Detector</button>
         </div>
         
         <!-- Success Message -->
@@ -1713,7 +2014,7 @@ HTML_TEMPLATE = '''
         <!-- Tab 2: Option Alerts System -->
         <div id="option-alerts-tab" class="tab-content">
             <div class="system-section">
-                <h2 class="section-title">🎯 Option Strike Alert System (Fixed Call/Put Separation)</h2>
+                <h2 class="section-title">🎯 Option Strike Alert System</h2>
                 <p style="margin-bottom: 20px; color: #666;">Configure alerts for specific strikes and premiums</p>
                 
                 <form action="/activate_alerts" method="POST">
@@ -1770,7 +2071,7 @@ HTML_TEMPLATE = '''
                                 {% for strike in eth_bot.option_chain_data.calls.keys()|sort %}
                                 <option value="{{ strike }}" {% if alert_configs['eth_call'].strike == strike %}selected{% endif %}>
                                     {{ strike }}
-                                                               </option>
+                                </option>
                                 {% endfor %}
                             </select>
                             <input type="number" name="eth_call_premium" placeholder="Premium ($)" 
@@ -1856,8 +2157,90 @@ HTML_TEMPLATE = '''
             </div>
         </div>
         
+        <!-- Tab 3: Premium Spike Detector -->
+        <div id="spike-detector-tab" class="tab-content">
+            <div class="system-section">
+                <!-- HEADER -->
+                <h2 class="section-title">🚨 PREMIUM SPIKE DETECTOR</h2>
+                
+                <!-- CONTROL PANEL -->
+                <div class="spike-control-panel">
+                    <h3>System Control</h3>
+                    <div class="status-item" style="border: none; padding: 0; margin-bottom: 20px;">
+                        <span style="font-size: 1.2rem; color: white;">Status:</span>
+                        <span style="font-size: 1.2rem; font-weight: bold; color: {% if spike_config.enabled %}#2ecc71{% else %}#e74c3c{% endif %};">
+                            {% if spike_config.enabled %}🟢 RUNNING{% else %}🔴 STOPPED{% endif %}
+                        </span>
+                    </div>
+                    
+                    <div class="control-buttons">
+                        <form action="/start_spike_detection" method="POST" style="flex: 1;">
+                            <button type="submit" class="start-btn">▶️ START MONITORING</button>
+                        </form>
+                        <form action="/stop_spike_detection" method="POST" style="flex: 1;">
+                            <button type="submit" class="stop-btn">⏸️ STOP MONITORING</button>
+                        </form>
+                    </div>
+                </div>
+                
+                <!-- CONFIGURATION -->
+                <div class="config-section">
+                    <h4>Configuration Settings</h4>
+                    <form action="/update_spike_config" method="POST">
+                        <!-- Minimum Spike -->
+                        <div class="config-row">
+                            <label for="min_spike_percent">Minimum Spike:</label>
+                            <input type="number" id="min_spike_percent" name="min_spike_percent" 
+                                   value="{{ spike_config.min_spike_percent }}" min="50" max="500" step="1"
+                                   class="threshold-input" required>
+                            <small style="color: #666; display: block; margin-top: 5px;">
+                                Alert when premium increases by this percentage (100% = doubles)
+                            </small>
+                        </div>
+                        
+                        <!-- Cooldown -->
+                        <div class="config-row">
+                            <label for="cooldown_seconds">Cooldown:</label>
+                            <input type="number" id="cooldown_seconds" name="cooldown_seconds" 
+                                   value="{{ spike_config.cooldown_seconds }}" min="30" max="3600" step="30"
+                                   class="threshold-input" required>
+                            <small style="color: #666; display: block; margin-top: 5px;">
+                                Seconds between alerts for same symbol (300 = 5 minutes)
+                            </small>
+                        </div>
+                        
+                        <!-- Asset Selection -->
+                        <div class="checkbox-grid">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="monitor_eth" name="monitor_eth" 
+                                       {% if spike_config.monitor_eth %}checked{% endif %}>
+                                <label for="monitor_eth">Monitor ETH</label>
+                            </div>
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="monitor_btc" name="monitor_btc"
+                                       {% if spike_config.monitor_btc %}checked{% endif %}>
+                                <label for="monitor_btc">Monitor BTC</label>
+                            </div>
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="monitor_calls" name="monitor_calls"
+                                       {% if spike_config.monitor_calls %}checked{% endif %}>
+                                <label for="monitor_calls">Include Calls</label>
+                            </div>
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="monitor_puts" name="monitor_puts"
+                                       {% if spike_config.monitor_puts %}checked{% endif %}>
+                                <label for="monitor_puts">Include Puts</label>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="save-btn">💾 SAVE SETTINGS</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
         <div class="footer">
-            <p>Auto-expiry at 5:30 PM IST • Both systems running simultaneously</p>
+            <p>Auto-expiry at 5:30 PM IST • All systems running simultaneously</p>
             <p>Last Update: {{ get_ist_time() }} • <a href="/health" style="color: #4a6ee0;">Health Check</a></p>
         </div>
     </div>
@@ -1880,6 +2263,11 @@ HTML_TEMPLATE = '''
             // Activate selected button
             event.target.classList.add('active');
         }
+        
+        // Auto-refresh page every 30 seconds
+        setTimeout(function() {
+            window.location.reload();
+        }, 30000);
     </script>
 </body>
 </html>
@@ -1895,6 +2283,7 @@ def home():
                                  eth_bot=eth_bot,
                                  btc_bot=btc_bot,
                                  alert_configs=alert_configs,
+                                 spike_config=spike_config,
                                  DELTA_THRESHOLD=DELTA_THRESHOLD,
                                  new_system_active=new_system_active,
                                  last_check_time=last_check_time,
@@ -1906,7 +2295,7 @@ def home():
 
 @app.route('/activate_alerts', methods=['POST'])
 def activate_alerts():
-    """Activate the new option alert system"""
+    """Activate System 2: Option alerts"""
     global new_system_active, previous_configs, alert_configs
     
     try:
@@ -1999,7 +2388,7 @@ def activate_alerts():
 
 @app.route('/update_eth_threshold', methods=['POST'])
 def update_eth_threshold():
-    """Update ETH threshold"""
+    """Update ETH threshold for System 1"""
     try:
         new_threshold = float(request.form['threshold'])
         if new_threshold <= 0:
@@ -2023,7 +2412,7 @@ def update_eth_threshold():
 
 @app.route('/update_btc_threshold', methods=['POST'])
 def update_btc_threshold():
-    """Update BTC threshold"""
+    """Update BTC threshold for System 1"""
     try:
         new_threshold = float(request.form['threshold'])
         if new_threshold <= 0:
@@ -2044,6 +2433,63 @@ def update_btc_threshold():
     except Exception as e:
         print(f"[{datetime.now()}] ❌ Error updating BTC threshold: {e}")
         return "Error updating threshold", 500
+
+@app.route('/start_spike_detection', methods=['POST'])
+def start_spike_detection():
+    """Start System 3: Premium spike detection"""
+    global spike_config
+    
+    if not spike_config.enabled:
+        spike_config.enabled = True
+        send_telegram(f"🚨 PREMIUM SPIKE DETECTOR STARTED!\n\n⚡ Monitoring for {spike_config.min_spike_percent}%+ spikes\n⏰ Cooldown: {spike_config.cooldown_seconds} seconds\n⏰ Time: {get_ist_time()}\n\nSystem is now active!")
+        print(f"[{datetime.now()}] ✅ Premium spike detector started")
+    
+    return redirect('/?success=Spike+detection+started!')
+
+@app.route('/stop_spike_detection', methods=['POST'])
+def stop_spike_detection():
+    """Stop System 3: Premium spike detection"""
+    global spike_config
+    
+    if spike_config.enabled:
+        spike_config.enabled = False
+        send_telegram(f"⏸️ PREMIUM SPIKE DETECTOR STOPPED\n\n⏰ Time: {get_ist_time()}\n\nMonitoring paused.")
+        print(f"[{datetime.now()}] ⏸️ Premium spike detector stopped")
+    
+    return redirect('/?success=Spike+detection+stopped!')
+
+@app.route('/update_spike_config', methods=['POST'])
+def update_spike_config():
+    """Update System 3 configuration"""
+    global spike_config
+    
+    try:
+        old_config = asdict(spike_config)
+        
+        # Update configuration
+        spike_config.min_spike_percent = float(request.form.get('min_spike_percent', 100.0))
+        spike_config.cooldown_seconds = int(request.form.get('cooldown_seconds', 300))
+        spike_config.monitor_eth = 'monitor_eth' in request.form
+        spike_config.monitor_btc = 'monitor_btc' in request.form
+        spike_config.monitor_calls = 'monitor_calls' in request.form
+        spike_config.monitor_puts = 'monitor_puts' in request.form
+        
+        # Send Telegram notification
+        current_time_str = get_ist_time()
+        eth_status = "✅" if spike_config.monitor_eth else "❌"
+        btc_status = "✅" if spike_config.monitor_btc else "❌"
+        calls_status = "✅" if spike_config.monitor_calls else "❌"
+        puts_status = "✅" if spike_config.monitor_puts else "❌"
+        
+        send_telegram(f"⚙️ SPIKE DETECTOR CONFIG UPDATED\n\n📊 Min Spike: {spike_config.min_spike_percent}%\n⏰ Cooldown: {spike_config.cooldown_seconds}s\n\n📡 Assets:\n{eth_status} ETH | {btc_status} BTC\n{calls_status} Calls | {puts_status} Puts\n\n⏰ Time: {current_time_str}")
+        
+        print(f"[{datetime.now()}] ✅ Spike detector config updated: {spike_config.min_spike_percent}% min spike, {spike_config.cooldown_seconds}s cooldown")
+        
+        return redirect('/?success=Spike+detector+configuration+updated!')
+        
+    except Exception as e:
+        print(f"[{datetime.now()}] ❌ Error updating spike config: {e}")
+        return redirect('/?success=Error+updating+configuration')
 
 @app.route('/health')
 def health():
@@ -2075,6 +2521,12 @@ def health():
             },
             "last_check": last_check_time.isoformat() if last_check_time else None
         },
+        "system_3_spike_detector": {
+            "active": spike_config.enabled,
+            "config": asdict(spike_config),
+            "spikes_detected": system3_spikes_detected,
+            "symbols_tracked": len(price_history)
+        },
         "current_time": current_time_str,
         "expiry_display": format_expiry_display(eth_bot.active_expiry)
     }, 200
@@ -2097,11 +2549,11 @@ def ping():
     return "pong", 200
 
 # -------------------------------
-# Start Both Systems
+# Start All Systems
 # -------------------------------
 def start_bots():
     print("="*60)
-    print("DUAL ALERT SYSTEM")
+    print("TRIPLE ALERT SYSTEM")
     print("="*60)
     print(f"⚡ System 1: Arbitrage Alerts")
     print(f"   • ETH Threshold: ${DELTA_THRESHOLD['ETH']:.2f}")
@@ -2110,19 +2562,21 @@ def start_bots():
     print(f"🎯 System 2: Option Strike Alerts")
     print(f"   • 4 independent sections")
     print(f"   • Fixed call/put separation")
-    print(f"   • Telegram alerts on updates")
+    print(f"🚨 System 3: Premium Spike Detection")
+    print(f"   • Minimum spike: {spike_config.min_spike_percent}%")
+    print(f"   • Cooldown: {spike_config.cooldown_seconds} seconds")
     print(f"📅 Current expiry: {get_current_expiry()}")
     print(f"🔄 Auto-expiry at 5:30 PM IST")
     print("="*60)
     
-    # Start ETH WebSocket bot (both systems)
+    # Start ETH WebSocket bot (all systems)
     eth_bot.start()
     
-    # Start BTC REST API bot (both systems)
+    # Start BTC REST API bot (all systems)
     btc_thread = threading.Thread(target=btc_bot.start_monitoring, daemon=True)
     btc_thread.start()
     
-    print(f"[{datetime.now()}] ✅ Both systems started")
+    print(f"[{datetime.now()}] ✅ All three systems started")
 
 if __name__ == "__main__":
     start_bots()
@@ -2132,4 +2586,3 @@ if __name__ == "__main__":
     print(f"[{datetime.now()}] 🌐 Website: http://localhost:{port}")
     print(f"[{datetime.now()}] 🚀 Starting web server on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-                                
