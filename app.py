@@ -53,13 +53,16 @@ new_system_active = False
 last_check_time = None
 
 # -------------------------------
-# System 3: Premium Spike Detection Configuration
+# System 3: Dual Condition Spike Detection Configuration
 # -------------------------------
 @dataclass
 class SpikeConfig:
     enabled: bool = False
+    # Condition 1: Price Spike
     min_spike_percent: float = 100.0  # Minimum 100% spike to alert
-    cooldown_seconds: int = 300       # 5 minutes cooldown between alerts for same symbol
+    # Condition 2: Bid-Ask Spread
+    min_spread_percent: float = 100.0  # Minimum 100% spread to alert
+    # Asset filtering (applies to both conditions)
     monitor_eth: bool = True
     monitor_btc: bool = True
     monitor_calls: bool = True
@@ -69,9 +72,14 @@ class SpikeConfig:
 spike_config = SpikeConfig()
 
 # System 3 data storage - GLOBAL DECLARATION
-price_history = {}  # symbol: [last 10 prices]
-last_spike_alert = {}  # symbol: timestamp
+price_history = {}  # symbol: [last 10 prices] for Condition 1
+last_spike_alert = {}  # symbol: timestamp for Condition 1
+last_spread_alert = {}  # symbol: timestamp for Condition 2
 system3_spikes_detected = 0
+system3_spreads_detected = 0
+
+# Fixed cooldown for both conditions (2 minutes)
+SPIKE_COOLDOWN_SECONDS = 120
 
 # -------------------------------
 # Utility Functions
@@ -192,7 +200,7 @@ def send_alert_triggered_telegram(alert_data: Dict):
     send_telegram(message)
 
 def send_spike_alert_telegram(symbol: str, current_price: float, historical_avg: float, spike_percent: float):
-    """Send Telegram message for premium spike"""
+    """Send Telegram message for Condition 1: Premium spike"""
     # Extract symbol info
     parts = symbol.split('-')
     asset = "BTC" if "BTC" in symbol else "ETH"
@@ -214,100 +222,165 @@ def send_spike_alert_telegram(symbol: str, current_price: float, historical_avg:
 """
     
     send_telegram(message)
-    print(f"[{datetime.now()}] 🚨 Spike alert sent for {symbol}: ${historical_avg:.2f} → ${current_price:.2f} (+{spike_percent:.1f}%)")
+    print(f"[{datetime.now()}] 🚨 Condition 1: Spike alert sent for {symbol}: ${historical_avg:.2f} → ${current_price:.2f} (+{spike_percent:.1f}%)")
+
+def send_spread_alert_telegram(symbol: str, bid_price: float, ask_price: float, spread_percent: float):
+    """Send Telegram message for Condition 2: Bid-Ask spread"""
+    # Extract symbol info
+    parts = symbol.split('-')
+    asset = "BTC" if "BTC" in symbol else "ETH"
+    option_type = "CALL" if parts[0] == "C" else "PUT"
+    strike = parts[2] if len(parts) > 2 else "Unknown"
+    
+    message = f"""
+🚨 **BID-ASK SPREAD ALERT!**
+
+**{asset} {strike} {option_type}**
+**Time:** {get_ist_time()}
+
+**Current Prices:**
+• Bid: ${bid_price:.2f}
+• Ask: ${ask_price:.2f}
+• Spread: {spread_percent:.1f}%
+
+**Alert:** Spread is {spread_percent:.1f}% (Bid: ${bid_price:.2f}, Ask: ${ask_price:.2f})
+"""
+    
+    send_telegram(message)
+    print(f"[{datetime.now()}] 🚨 Condition 2: Spread alert sent for {symbol}: Bid ${bid_price:.2f}, Ask ${ask_price:.2f}, Spread {spread_percent:.1f}%")
 
 # -------------------------------
-# System 3: Premium Spike Detection Functions
+# System 3: Dual Condition Detection Functions
 # -------------------------------
 def check_premium_spikes_eth(eth_bot):
-    """Check for premium spikes in ETH options"""
-    global price_history, last_spike_alert, system3_spikes_detected
+    """Check for both conditions in ETH options"""
+    global price_history, last_spike_alert, last_spread_alert, system3_spikes_detected, system3_spreads_detected
     
-    if not spike_config.enabled or not spike_config.monitor_eth:
+    if not spike_config.enabled:
         return
     
     for symbol, price_data in eth_bot.options_prices.items():
-        # Check if we should monitor this symbol type
+        # Check if we should monitor this symbol based on asset filtering
         if not should_monitor_symbol(symbol):
             continue
         
         current_bid = price_data['bid']
-        if current_bid <= 0:
+        current_ask = price_data['ask']
+        
+        # Skip if no valid prices
+        if current_bid <= 0 or current_ask <= 0:
             continue
         
-        # Initialize price history for this symbol
-        if symbol not in price_history:
-            price_history[symbol] = []
-        
-        # Add current price to history
-        price_history[symbol].append(current_bid)
-        
-        # Keep only last 10 prices
-        if len(price_history[symbol]) > 10:
-            price_history[symbol] = price_history[symbol][-10:]
-        
-        # Need at least 5 prices for meaningful average
-        if len(price_history[symbol]) >= 5:
-            historical_avg = sum(price_history[symbol][:-1]) / (len(price_history[symbol]) - 1)
+        # CONDITION 1: PRICE SPIKE DETECTION
+        if spike_config.monitor_eth:
+            # Initialize price history for this symbol
+            if symbol not in price_history:
+                price_history[symbol] = []
             
-            if historical_avg > 0:
-                spike_percent = ((current_bid - historical_avg) / historical_avg) * 100
+            # Add current price to history
+            price_history[symbol].append(current_bid)
+            
+            # Keep only last 10 prices
+            if len(price_history[symbol]) > 10:
+                price_history[symbol] = price_history[symbol][-10:]
+            
+            # Need at least 5 prices for meaningful average
+            if len(price_history[symbol]) >= 5:
+                historical_avg = sum(price_history[symbol][:-1]) / (len(price_history[symbol]) - 1)
                 
-                if spike_percent >= spike_config.min_spike_percent:
-                    # Check cooldown
-                    now = datetime.now().timestamp()
-                    last_alert = last_spike_alert.get(symbol, 0)
+                if historical_avg > 0:
+                    spike_percent = ((current_bid - historical_avg) / historical_avg) * 100
                     
-                    if now - last_alert >= spike_config.cooldown_seconds:
-                        # Send alert
-                        send_spike_alert_telegram(symbol, current_bid, historical_avg, spike_percent)
-                        last_spike_alert[symbol] = now
-                        system3_spikes_detected += 1
+                    if spike_percent >= spike_config.min_spike_percent:
+                        # Check cooldown (2 minutes fixed)
+                        now = datetime.now().timestamp()
+                        last_alert = last_spike_alert.get(symbol, 0)
+                        
+                        if now - last_alert >= SPIKE_COOLDOWN_SECONDS:
+                            # Send alert
+                            send_spike_alert_telegram(symbol, current_bid, historical_avg, spike_percent)
+                            last_spike_alert[symbol] = now
+                            system3_spikes_detected += 1
+        
+        # CONDITION 2: BID-ASK SPREAD DETECTION
+        if current_bid > 0:
+            spread_percent = ((current_ask - current_bid) / current_bid) * 100
+            
+            if spread_percent >= spike_config.min_spread_percent:
+                # Check cooldown (2 minutes fixed)
+                now = datetime.now().timestamp()
+                last_alert = last_spread_alert.get(symbol, 0)
+                
+                if now - last_alert >= SPIKE_COOLDOWN_SECONDS:
+                    # Send alert
+                    send_spread_alert_telegram(symbol, current_bid, current_ask, spread_percent)
+                    last_spread_alert[symbol] = now
+                    system3_spreads_detected += 1
 
 def check_premium_spikes_btc(btc_bot):
-    """Check for premium spikes in BTC options"""
-    global price_history, last_spike_alert, system3_spikes_detected
+    """Check for both conditions in BTC options"""
+    global price_history, last_spike_alert, last_spread_alert, system3_spikes_detected, system3_spreads_detected
     
-    if not spike_config.enabled or not spike_config.monitor_btc:
+    if not spike_config.enabled:
         return
     
     for symbol, price_data in btc_bot.options_prices.items():
-        # Check if we should monitor this symbol type
+        # Check if we should monitor this symbol based on asset filtering
         if not should_monitor_symbol(symbol):
             continue
         
         current_bid = price_data['bid']
-        if current_bid <= 0:
+        current_ask = price_data['ask']
+        
+        # Skip if no valid prices
+        if current_bid <= 0 or current_ask <= 0:
             continue
         
-        # Initialize price history for this symbol
-        if symbol not in price_history:
-            price_history[symbol] = []
-        
-        # Add current price to history
-        price_history[symbol].append(current_bid)
-        
-        # Keep only last 10 prices
-        if len(price_history[symbol]) > 10:
-            price_history[symbol] = price_history[symbol][-10:]
-        
-        # Need at least 5 prices for meaningful average
-        if len(price_history[symbol]) >= 5:
-            historical_avg = sum(price_history[symbol][:-1]) / (len(price_history[symbol]) - 1)
+        # CONDITION 1: PRICE SPIKE DETECTION
+        if spike_config.monitor_btc:
+            # Initialize price history for this symbol
+            if symbol not in price_history:
+                price_history[symbol] = []
             
-            if historical_avg > 0:
-                spike_percent = ((current_bid - historical_avg) / historical_avg) * 100
+            # Add current price to history
+            price_history[symbol].append(current_bid)
+            
+            # Keep only last 10 prices
+            if len(price_history[symbol]) > 10:
+                price_history[symbol] = price_history[symbol][-10:]
+            
+            # Need at least 5 prices for meaningful average
+            if len(price_history[symbol]) >= 5:
+                historical_avg = sum(price_history[symbol][:-1]) / (len(price_history[symbol]) - 1)
                 
-                if spike_percent >= spike_config.min_spike_percent:
-                    # Check cooldown
-                    now = datetime.now().timestamp()
-                    last_alert = last_spike_alert.get(symbol, 0)
+                if historical_avg > 0:
+                    spike_percent = ((current_bid - historical_avg) / historical_avg) * 100
                     
-                    if now - last_alert >= spike_config.cooldown_seconds:
-                        # Send alert
-                        send_spike_alert_telegram(symbol, current_bid, historical_avg, spike_percent)
-                        last_spike_alert[symbol] = now
-                        system3_spikes_detected += 1
+                    if spike_percent >= spike_config.min_spike_percent:
+                        # Check cooldown (2 minutes fixed)
+                        now = datetime.now().timestamp()
+                        last_alert = last_spike_alert.get(symbol, 0)
+                        
+                        if now - last_alert >= SPIKE_COOLDOWN_SECONDS:
+                            # Send alert
+                            send_spike_alert_telegram(symbol, current_bid, historical_avg, spike_percent)
+                            last_spike_alert[symbol] = now
+                            system3_spikes_detected += 1
+        
+        # CONDITION 2: BID-ASK SPREAD DETECTION
+        if current_bid > 0:
+            spread_percent = ((current_ask - current_bid) / current_bid) * 100
+            
+            if spread_percent >= spike_config.min_spread_percent:
+                # Check cooldown (2 minutes fixed)
+                now = datetime.now().timestamp()
+                last_alert = last_spread_alert.get(symbol, 0)
+                
+                if now - last_alert >= SPIKE_COOLDOWN_SECONDS:
+                    # Send alert
+                    send_spread_alert_telegram(symbol, current_bid, current_ask, spread_percent)
+                    last_spread_alert[symbol] = now
+                    system3_spreads_detected += 1
 
 def should_monitor_symbol(symbol: str) -> bool:
     """Check if symbol should be monitored based on config"""
@@ -420,7 +493,7 @@ class ETHWebSocketBot:
 
     def check_and_update_expiry(self):
         """Check if we need to update the active expiry"""
-        global price_history
+        global price_history, last_spike_alert, last_spread_alert
         
         current_time = datetime.now().timestamp()
         if current_time - self.last_expiry_check >= EXPIRY_CHECK_INTERVAL:
@@ -451,11 +524,15 @@ class ETHWebSocketBot:
                         if alert_configs[config_id].is_monitoring:
                             alert_configs[config_id].active_expiry = self.active_expiry
                     
-                    # Clear price history for old expiry symbols
+                    # Clear price history and alert timestamps for old expiry symbols
                     old_symbols = [s for s in price_history.keys() if 'ETH' in s]
                     for symbol in old_symbols:
                         if symbol in price_history:
                             del price_history[symbol]
+                        if symbol in last_spike_alert:
+                            del last_spike_alert[symbol]
+                        if symbol in last_spread_alert:
+                            del last_spread_alert[symbol]
                     
                     if self.connected and self.ws:
                         self.subscribe_to_options()
@@ -484,11 +561,15 @@ class ETHWebSocketBot:
                         if alert_configs[config_id].is_monitoring:
                             alert_configs[config_id].active_expiry = self.active_expiry
                     
-                    # Clear price history for old expiry symbols
+                    # Clear price history and alert timestamps for old expiry symbols
                     old_symbols = [s for s in price_history.keys() if 'ETH' in s]
                     for symbol in old_symbols:
                         if symbol in price_history:
                             del price_history[symbol]
+                        if symbol in last_spike_alert:
+                            del last_spike_alert[symbol]
+                        if symbol in last_spread_alert:
+                            del last_spread_alert[symbol]
                     
                     if self.connected and self.ws:
                         self.subscribe_to_options()
@@ -708,7 +789,7 @@ class ETHWebSocketBot:
                     # SYSTEM 2: User alert logic
                     self.check_user_alerts()
                     
-                    # SYSTEM 3: Premium spike detection
+                    # SYSTEM 3: Dual condition detection
                     check_premium_spikes_eth(self)
                     
                     self.last_arbitrage_check = current_time
@@ -1031,7 +1112,7 @@ class BTCRESTBot:
 
     def check_and_update_expiry(self):
         """Check if we need to update the active expiry"""
-        global price_history
+        global price_history, last_spike_alert, last_spread_alert
         
         current_time = datetime.now().timestamp()
         if current_time - self.last_expiry_check >= EXPIRY_CHECK_INTERVAL:
@@ -1062,11 +1143,15 @@ class BTCRESTBot:
                         if alert_configs[config_id].is_monitoring:
                             alert_configs[config_id].active_expiry = self.active_expiry
                     
-                    # Clear price history for old expiry symbols
+                    # Clear price history and alert timestamps for old expiry symbols
                     old_symbols = [s for s in price_history.keys() if 'BTC' in s]
                     for symbol in old_symbols:
                         if symbol in price_history:
                             del price_history[symbol]
+                        if symbol in last_spike_alert:
+                            del last_spike_alert[symbol]
+                        if symbol in last_spread_alert:
+                            del last_spread_alert[symbol]
                     
                     send_telegram(f"🔄 BTC Expiry Rollover Complete!\n\n📅 Now monitoring: {self.active_expiry}\n⏰ Time: {current_time_str}")
                     return True
@@ -1092,11 +1177,15 @@ class BTCRESTBot:
                         if alert_configs[config_id].is_monitoring:
                             alert_configs[config_id].active_expiry = self.active_expiry
                     
-                    # Clear price history for old expiry symbols
+                    # Clear price history and alert timestamps for old expiry symbols
                     old_symbols = [s for s in price_history.keys() if 'BTC' in s]
                     for symbol in old_symbols:
                         if symbol in price_history:
                             del price_history[symbol]
+                        if symbol in last_spike_alert:
+                            del last_spike_alert[symbol]
+                        if symbol in last_spread_alert:
+                            del last_spread_alert[symbol]
                     
                     send_telegram(f"🔄 BTC Expiry Update!\n\n📅 Now monitoring: {self.active_expiry}\n⏰ Time: {current_time_str}")
                     return True
@@ -1436,7 +1525,7 @@ class BTCRESTBot:
                     # SYSTEM 2: User alert logic
                     self.check_user_alerts()
                     
-                    # SYSTEM 3: Premium spike detection
+                    # SYSTEM 3: Dual condition detection
                     check_premium_spikes_btc(self)
                     
                     self.last_arbitrage_check = current_time
@@ -1463,7 +1552,7 @@ eth_bot = ETHWebSocketBot()
 btc_bot = BTCRESTBot()
 
 # -------------------------------
-# HTML Template (SAME AS BEFORE - just showing the Flask routes section)
+# HTML Template - UPDATED FOR DUAL CONDITION SYSTEM 3
 # -------------------------------
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -1833,6 +1922,35 @@ HTML_TEMPLATE = '''
             font-size: 1.3rem;
         }
         
+        .condition-section {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid;
+        }
+        
+        .condition-1 {
+            border-left-color: #3498db;
+        }
+        
+        .condition-2 {
+            border-left-color: #9b59b6;
+        }
+        
+        .condition-section h5 {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .condition-section small {
+            color: #666;
+            display: block;
+            margin-top: 5px;
+            font-size: 0.9rem;
+        }
+        
         .config-row {
             margin-bottom: 20px;
         }
@@ -1866,7 +1984,17 @@ HTML_TEMPLATE = '''
         
         .save-btn:hover {
             background: #2980b9;
-                       transform: translateY(-2px);
+            transform: translateY(-2px);
+        }
+        
+        .cooldown-note {
+            background: #fff3cd;
+            color: #856404;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 0.9rem;
+            text-align: center;
         }
         
         .footer {
@@ -1913,7 +2041,7 @@ HTML_TEMPLATE = '''
     <div class="container">
         <div class="header">
             <h1>🚀 Triple Alert System</h1>
-            <div class="subtitle">Arbitrage + Option Alerts + Premium Spike Detection</div>
+            <div class="subtitle">Arbitrage + Option Alerts + Dual Condition Spike Detection</div>
         </div>
         
         <div class="tabs">
@@ -2163,7 +2291,7 @@ HTML_TEMPLATE = '''
         <div id="spike-detector-tab" class="tab-content">
             <div class="system-section">
                 <!-- HEADER -->
-                <h2 class="section-title">🚨 PREMIUM SPIKE DETECTOR</h2>
+                <h2 class="section-title">🚨 DUAL CONDITION SPIKE DETECTOR</h2>
                 
                 <!-- CONTROL PANEL -->
                 <div class="spike-control-panel">
@@ -2173,6 +2301,10 @@ HTML_TEMPLATE = '''
                         <span style="font-size: 1.2rem; font-weight: bold; color: {% if spike_config.enabled %}#2ecc71{% else %}#e74c3c{% endif %};">
                             {% if spike_config.enabled %}🟢 RUNNING{% else %}🔴 STOPPED{% endif %}
                         </span>
+                    </div>
+                    
+                    <div class="cooldown-note">
+                        ⏰ Cooldown: 120 seconds (2 minutes) fixed for both conditions
                     </div>
                     
                     <div class="control-buttons">
@@ -2187,31 +2319,38 @@ HTML_TEMPLATE = '''
                 
                 <!-- CONFIGURATION -->
                 <div class="config-section">
-                    <h4>Configuration Settings</h4>
+                    <h4>Dual Condition Configuration</h4>
                     <form action="/update_spike_config" method="POST">
-                        <!-- Minimum Spike -->
-                        <div class="config-row">
-                            <label for="min_spike_percent">Minimum Spike:</label>
-                            <input type="number" id="min_spike_percent" name="min_spike_percent" 
-                                   value="{{ spike_config.min_spike_percent }}" min="50" max="500" step="1"
-                                   class="threshold-input" required>
-                            <small style="color: #666; display: block; margin-top: 5px;">
-                                Alert when premium increases by this percentage (100% = doubles)
-                            </small>
+                        
+                        <!-- CONDITION 1: PRICE SPIKE -->
+                        <div class="condition-section condition-1">
+                            <h5>📊 CONDITION 1: PRICE SPIKE</h5>
+                            <div class="config-row">
+                                <label for="min_spike_percent">Minimum Spike:</label>
+                                <input type="number" id="min_spike_percent" name="min_spike_percent" 
+                                       value="{{ spike_config.min_spike_percent }}" min="50" max="500" step="1"
+                                       class="threshold-input" required>
+                                <small>
+                                    Alert when bid price increases by this percentage (100% = price doubles)
+                                </small>
+                            </div>
                         </div>
                         
-                        <!-- Cooldown -->
-                        <div class="config-row">
-                            <label for="cooldown_seconds">Cooldown:</label>
-                            <input type="number" id="cooldown_seconds" name="cooldown_seconds" 
-                                   value="{{ spike_config.cooldown_seconds }}" min="30" max="3600" step="30"
-                                   class="threshold-input" required>
-                            <small style="color: #666; display: block; margin-top: 5px;">
-                                Seconds between alerts for same symbol (300 = 5 minutes)
-                            </small>
+                        <!-- CONDITION 2: BID-ASK SPREAD -->
+                        <div class="condition-section condition-2">
+                            <h5>📊 CONDITION 2: BID-ASK SPREAD</h5>
+                            <div class="config-row">
+                                <label for="min_spread_percent">Minimum Spread:</label>
+                                <input type="number" id="min_spread_percent" name="min_spread_percent" 
+                                       value="{{ spike_config.min_spread_percent }}" min="50" max="500" step="1"
+                                       class="threshold-input" required>
+                                <small>
+                                    Alert when (Ask-Bid)/Bid × 100 ≥ this percentage (100% = ask is double the bid)
+                                </small>
+                            </div>
                         </div>
                         
-                        <!-- Asset Selection -->
+                        <!-- ASSET FILTERING -->
                         <div class="checkbox-grid">
                             <div class="checkbox-group">
                                 <input type="checkbox" id="monitor_eth" name="monitor_eth" 
@@ -2438,31 +2577,31 @@ def update_btc_threshold():
 
 @app.route('/start_spike_detection', methods=['POST'])
 def start_spike_detection():
-    """Start System 3: Premium spike detection"""
+    """Start System 3: Dual condition spike detection"""
     global spike_config
     
     if not spike_config.enabled:
         spike_config.enabled = True
-        send_telegram(f"🚨 PREMIUM SPIKE DETECTOR STARTED!\n\n⚡ Monitoring for {spike_config.min_spike_percent}%+ spikes\n⏰ Cooldown: {spike_config.cooldown_seconds} seconds\n⏰ Time: {get_ist_time()}\n\nSystem is now active!")
-        print(f"[{datetime.now()}] ✅ Premium spike detector started")
+        send_telegram(f"🚨 DUAL CONDITION SPIKE DETECTOR STARTED!\n\n⚡ Condition 1: {spike_config.min_spike_percent}%+ price spike\n⚡ Condition 2: {spike_config.min_spread_percent}%+ bid-ask spread\n⏰ Cooldown: 120 seconds (2 minutes)\n⏰ Time: {get_ist_time()}\n\nBoth conditions are now active!")
+        print(f"[{datetime.now()}] ✅ Dual condition spike detector started")
     
     return redirect('/?success=Spike+detection+started!')
 
 @app.route('/stop_spike_detection', methods=['POST'])
 def stop_spike_detection():
-    """Stop System 3: Premium spike detection"""
+    """Stop System 3: Dual condition spike detection"""
     global spike_config
     
     if spike_config.enabled:
         spike_config.enabled = False
-        send_telegram(f"⏸️ PREMIUM SPIKE DETECTOR STOPPED\n\n⏰ Time: {get_ist_time()}\n\nMonitoring paused.")
-        print(f"[{datetime.now()}] ⏸️ Premium spike detector stopped")
+        send_telegram(f"⏸️ DUAL CONDITION SPIKE DETECTOR STOPPED\n\n⏰ Time: {get_ist_time()}\n\nBoth conditions paused.")
+        print(f"[{datetime.now()}] ⏸️ Dual condition spike detector stopped")
     
     return redirect('/?success=Spike+detection+stopped!')
 
 @app.route('/update_spike_config', methods=['POST'])
 def update_spike_config():
-    """Update System 3 configuration"""
+    """Update System 3 dual condition configuration"""
     global spike_config
     
     try:
@@ -2470,7 +2609,7 @@ def update_spike_config():
         
         # Update configuration
         spike_config.min_spike_percent = float(request.form.get('min_spike_percent', 100.0))
-        spike_config.cooldown_seconds = int(request.form.get('cooldown_seconds', 300))
+        spike_config.min_spread_percent = float(request.form.get('min_spread_percent', 100.0))
         spike_config.monitor_eth = 'monitor_eth' in request.form
         spike_config.monitor_btc = 'monitor_btc' in request.form
         spike_config.monitor_calls = 'monitor_calls' in request.form
@@ -2483,9 +2622,9 @@ def update_spike_config():
         calls_status = "✅" if spike_config.monitor_calls else "❌"
         puts_status = "✅" if spike_config.monitor_puts else "❌"
         
-        send_telegram(f"⚙️ SPIKE DETECTOR CONFIG UPDATED\n\n📊 Min Spike: {spike_config.min_spike_percent}%\n⏰ Cooldown: {spike_config.cooldown_seconds}s\n\n📡 Assets:\n{eth_status} ETH | {btc_status} BTC\n{calls_status} Calls | {puts_status} Puts\n\n⏰ Time: {current_time_str}")
+        send_telegram(f"⚙️ DUAL CONDITION CONFIG UPDATED\n\n📊 Condition 1 (Price Spike): {spike_config.min_spike_percent}%\n📊 Condition 2 (Bid-Ask Spread): {spike_config.min_spread_percent}%\n⏰ Cooldown: 120 seconds (2 minutes)\n\n📡 Assets:\n{eth_status} ETH | {btc_status} BTC\n{calls_status} Calls | {puts_status} Puts\n\n⏰ Time: {current_time_str}")
         
-        print(f"[{datetime.now()}] ✅ Spike detector config updated: {spike_config.min_spike_percent}% min spike, {spike_config.cooldown_seconds}s cooldown")
+        print(f"[{datetime.now()}] ✅ Dual condition config updated: Price spike {spike_config.min_spike_percent}%, Spread {spike_config.min_spread_percent}%")
         
         return redirect('/?success=Spike+detector+configuration+updated!')
         
@@ -2526,7 +2665,11 @@ def health():
         "system_3_spike_detector": {
             "active": spike_config.enabled,
             "config": asdict(spike_config),
+            "condition_1_threshold": f"{spike_config.min_spike_percent}%",
+            "condition_2_threshold": f"{spike_config.min_spread_percent}%",
+            "cooldown": "120 seconds (2 minutes)",
             "spikes_detected": system3_spikes_detected,
+            "spreads_detected": system3_spreads_detected,
             "symbols_tracked": len(price_history)
         },
         "current_time": current_time_str,
@@ -2564,9 +2707,10 @@ def start_bots():
     print(f"🎯 System 2: Option Strike Alerts")
     print(f"   • 4 independent sections")
     print(f"   • Fixed call/put separation")
-    print(f"🚨 System 3: Premium Spike Detection")
-    print(f"   • Minimum spike: {spike_config.min_spike_percent}%")
-    print(f"   • Cooldown: {spike_config.cooldown_seconds} seconds")
+    print(f"🚨 System 3: Dual Condition Spike Detection")
+    print(f"   • Condition 1: Price spike ≥ {spike_config.min_spike_percent}%")
+    print(f"   • Condition 2: Bid-ask spread ≥ {spike_config.min_spread_percent}%")
+    print(f"   • Cooldown: 120 seconds (2 minutes) fixed")
     print(f"📅 Current expiry: {get_current_expiry()}")
     print(f"🔄 Auto-expiry at 5:30 PM IST")
     print("="*60)
