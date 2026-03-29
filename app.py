@@ -85,6 +85,22 @@ last_spread_alert = {}  # symbol: timestamp for Condition 2
 SPIKE_COOLDOWN_SECONDS = 120
 
 # -------------------------------
+# System 4: Exact Premium Match Detection Configuration
+# -------------------------------
+@dataclass
+class PremiumMatchConfig:
+    enabled: bool = False  # System 4 master switch
+    cooldown_seconds: int = 60  # Cooldown between alerts (user configurable)
+
+# System 4 data storage
+premium_match_config = PremiumMatchConfig()
+last_premium_match_alert = {}  # key: f"{asset}_{type}_{strike1}_{strike2}" -> timestamp
+system4_active = False
+system4_match_count = 0
+system4_last_alert = None
+system4_start_time = None
+
+# -------------------------------
 # Utility Functions
 # -------------------------------
 def get_ist_time():
@@ -253,6 +269,201 @@ def send_spread_alert_telegram(symbol: str, bid_price: float, ask_price: float, 
     print(f"[{datetime.now()}] 🚨 Condition 2: Spread alert sent for {symbol}: Bid ${bid_price:.2f}, Ask ${ask_price:.2f}, Spread {spread_percent:.1f}%")
 
 # -------------------------------
+# System 4: Premium Match Functions
+# -------------------------------
+def send_premium_match_telegram(asset: str, option_type: str, 
+                                strike_bid: int, strike_ask: int,
+                                bid_price: float, ask_price: float):
+    """Send Telegram message for System 4: Exact premium matches"""
+    global system4_match_count, system4_last_alert
+    
+    system4_match_count += 1
+    system4_last_alert = get_ist_time()
+    
+    message = f"""
+🎯 **SYSTEM 4: EXACT PREMIUM MATCH DETECTED!**
+
+**{asset} {option_type.upper()} OPTIONS**
+
+**Match Found:**
+• Strike {strike_bid} Bid: ${bid_price:.2f}
+• Strike {strike_ask} Ask: ${ask_price:.2f}
+• **Match: ${bid_price:.2f} = ${ask_price:.2f}** ✅
+
+**Time:** {get_ist_time()}
+"""
+    
+    send_telegram(message)
+    print(f"[{datetime.now()}] 🎯 System 4: Premium match - {asset} {strike_bid} bid ${bid_price:.2f} = {strike_ask} ask ${ask_price:.2f}")
+
+def check_premium_matches_eth(eth_bot):
+    """System 4: Check for exact premium matches in ETH options"""
+    global last_premium_match_alert, system4_active
+    
+    if not system4_active or not premium_match_config.enabled:
+        return
+    
+    # Get all strikes with valid prices
+    strikes_data = {}
+    
+    for symbol, price_data in eth_bot.options_prices.items():
+        if 'ETH' not in symbol:
+            continue
+            
+        # Check expiry
+        symbol_expiry = eth_bot.extract_expiry_from_symbol(symbol)
+        if symbol_expiry != eth_bot.active_expiry:
+            continue
+        
+        strike = eth_bot.extract_strike(symbol)
+        if strike == 0 or price_data['bid'] <= 0 or price_data['ask'] <= 0:
+            continue
+        
+        # Determine option type
+        if 'C-' in symbol:
+            option_type = 'call'
+        elif 'P-' in symbol:
+            option_type = 'put'
+        else:
+            continue
+        
+        if strike not in strikes_data:
+            strikes_data[strike] = {'call': {'bid': 0, 'ask': 0, 'symbol': ''}, 
+                                    'put': {'bid': 0, 'ask': 0, 'symbol': ''}}
+        
+        if option_type == 'call':
+            strikes_data[strike]['call']['bid'] = price_data['bid']
+            strikes_data[strike]['call']['ask'] = price_data['ask']
+            strikes_data[strike]['call']['symbol'] = symbol
+        else:
+            strikes_data[strike]['put']['bid'] = price_data['bid']
+            strikes_data[strike]['put']['ask'] = price_data['ask']
+            strikes_data[strike]['put']['symbol'] = symbol
+    
+    sorted_strikes = sorted(strikes_data.keys())
+    
+    if len(sorted_strikes) < 2:
+        return
+    
+    # Check CALL options: bid of lower strike = ask of higher strike
+    for i in range(len(sorted_strikes)):
+        for j in range(i + 1, len(sorted_strikes)):
+            strike_lower = sorted_strikes[i]
+            strike_higher = sorted_strikes[j]
+            
+            # CALL: lower strike bid = higher strike ask
+            lower_bid = strikes_data[strike_lower]['call']['bid']
+            higher_ask = strikes_data[strike_higher]['call']['ask']
+            
+            if lower_bid > 0 and higher_ask > 0 and lower_bid == higher_ask:
+                alert_key = f"ETH_CALL_{strike_lower}_{strike_higher}"
+                now = datetime.now().timestamp()
+                last_alert = last_premium_match_alert.get(alert_key, 0)
+                
+                if now - last_alert >= premium_match_config.cooldown_seconds:
+                    last_premium_match_alert[alert_key] = now
+                    send_premium_match_telegram('ETH', 'call', strike_lower, strike_higher, lower_bid, higher_ask)
+    
+    # Check PUT options: bid of higher strike = ask of lower strike
+    for i in range(len(sorted_strikes)):
+        for j in range(i + 1, len(sorted_strikes)):
+            strike_lower = sorted_strikes[i]
+            strike_higher = sorted_strikes[j]
+            
+            # PUT: higher strike bid = lower strike ask
+            higher_bid = strikes_data[strike_higher]['put']['bid']
+            lower_ask = strikes_data[strike_lower]['put']['ask']
+            
+            if higher_bid > 0 and lower_ask > 0 and higher_bid == lower_ask:
+                alert_key = f"ETH_PUT_{strike_higher}_{strike_lower}"
+                now = datetime.now().timestamp()
+                last_alert = last_premium_match_alert.get(alert_key, 0)
+                
+                if now - last_alert >= premium_match_config.cooldown_seconds:
+                    last_premium_match_alert[alert_key] = now
+                    send_premium_match_telegram('ETH', 'put', strike_higher, strike_lower, higher_bid, lower_ask)
+
+def check_premium_matches_btc(btc_bot):
+    """System 4: Check for exact premium matches in BTC options"""
+    global last_premium_match_alert, system4_active
+    
+    if not system4_active or not premium_match_config.enabled:
+        return
+    
+    # Get all strikes with valid prices
+    strikes_data = {}
+    
+    for symbol, price_data in btc_bot.options_prices.items():
+        if 'BTC' not in symbol:
+            continue
+            
+        strike = btc_bot.extract_strike(symbol)
+        if strike == 0 or price_data['bid'] <= 0 or price_data['ask'] <= 0:
+            continue
+        
+        # Determine option type
+        if symbol.startswith('C-'):
+            option_type = 'call'
+        elif symbol.startswith('P-'):
+            option_type = 'put'
+        else:
+            continue
+        
+        if strike not in strikes_data:
+            strikes_data[strike] = {'call': {'bid': 0, 'ask': 0, 'symbol': ''}, 
+                                    'put': {'bid': 0, 'ask': 0, 'symbol': ''}}
+        
+        if option_type == 'call':
+            strikes_data[strike]['call']['bid'] = price_data['bid']
+            strikes_data[strike]['call']['ask'] = price_data['ask']
+            strikes_data[strike]['call']['symbol'] = symbol
+        else:
+            strikes_data[strike]['put']['bid'] = price_data['bid']
+            strikes_data[strike]['put']['ask'] = price_data['ask']
+            strikes_data[strike]['put']['symbol'] = symbol
+    
+    sorted_strikes = sorted(strikes_data.keys())
+    
+    if len(sorted_strikes) < 2:
+        return
+    
+    # Check CALL options: bid of lower strike = ask of higher strike
+    for i in range(len(sorted_strikes)):
+        for j in range(i + 1, len(sorted_strikes)):
+            strike_lower = sorted_strikes[i]
+            strike_higher = sorted_strikes[j]
+            
+            lower_bid = strikes_data[strike_lower]['call']['bid']
+            higher_ask = strikes_data[strike_higher]['call']['ask']
+            
+            if lower_bid > 0 and higher_ask > 0 and lower_bid == higher_ask:
+                alert_key = f"BTC_CALL_{strike_lower}_{strike_higher}"
+                now = datetime.now().timestamp()
+                last_alert = last_premium_match_alert.get(alert_key, 0)
+                
+                if now - last_alert >= premium_match_config.cooldown_seconds:
+                    last_premium_match_alert[alert_key] = now
+                    send_premium_match_telegram('BTC', 'call', strike_lower, strike_higher, lower_bid, higher_ask)
+    
+    # Check PUT options: bid of higher strike = ask of lower strike
+    for i in range(len(sorted_strikes)):
+        for j in range(i + 1, len(sorted_strikes)):
+            strike_lower = sorted_strikes[i]
+            strike_higher = sorted_strikes[j]
+            
+            higher_bid = strikes_data[strike_higher]['put']['bid']
+            lower_ask = strikes_data[strike_lower]['put']['ask']
+            
+            if higher_bid > 0 and lower_ask > 0 and higher_bid == lower_ask:
+                alert_key = f"BTC_PUT_{strike_higher}_{strike_lower}"
+                now = datetime.now().timestamp()
+                last_alert = last_premium_match_alert.get(alert_key, 0)
+                
+                if now - last_alert >= premium_match_config.cooldown_seconds:
+                    last_premium_match_alert[alert_key] = now
+                    send_premium_match_telegram('BTC', 'put', strike_higher, strike_lower, higher_bid, lower_ask)
+
+# -------------------------------
 # System 3: Dual Condition Detection Functions
 # -------------------------------
 def check_premium_spikes_eth(eth_bot):
@@ -403,7 +614,7 @@ def should_monitor_symbol(symbol: str) -> bool:
     return True
 
 # -------------------------------
-# Combined ETH WebSocket Bot (Systems 1, 2 & 3)
+# Combined ETH WebSocket Bot (Systems 1, 2, 3 & 4)
 # -------------------------------
 class ETHWebSocketBot:
     def __init__(self):
@@ -496,7 +707,7 @@ class ETHWebSocketBot:
 
     def check_and_update_expiry(self):
         """Check if we need to update the active expiry"""
-        global price_history, last_spike_alert, last_spread_alert
+        global price_history, last_spike_alert, last_spread_alert, last_premium_match_alert
         
         current_time = datetime.now().timestamp()
         if current_time - self.last_expiry_check >= EXPIRY_CHECK_INTERVAL:
@@ -537,6 +748,11 @@ class ETHWebSocketBot:
                         if symbol in last_spread_alert:
                             del last_spread_alert[symbol]
                     
+                    # Clear System 4 alert timestamps
+                    keys_to_remove = [k for k in last_premium_match_alert.keys() if 'ETH' in k]
+                    for key in keys_to_remove:
+                        del last_premium_match_alert[key]
+                    
                     if self.connected and self.ws:
                         self.subscribe_to_options()
                     
@@ -573,6 +789,11 @@ class ETHWebSocketBot:
                             del last_spike_alert[symbol]
                         if symbol in last_spread_alert:
                             del last_spread_alert[symbol]
+                    
+                    # Clear System 4 alert timestamps
+                    keys_to_remove = [k for k in last_premium_match_alert.keys() if 'ETH' in k]
+                    for key in keys_to_remove:
+                        del last_premium_match_alert[key]
                     
                     if self.connected and self.ws:
                         self.subscribe_to_options()
@@ -795,6 +1016,9 @@ class ETHWebSocketBot:
                     # SYSTEM 3: Dual condition detection
                     check_premium_spikes_eth(self)
                     
+                    # SYSTEM 4: Exact premium match detection
+                    check_premium_matches_eth(self)
+                    
                     self.last_arbitrage_check = current_time
                     global last_check_time
                     last_check_time = datetime.now()
@@ -1016,7 +1240,7 @@ class ETHWebSocketBot:
         print(f"[{datetime.now()}] ✅ ETH: Bot thread started")
 
 # -------------------------------
-# Combined BTC REST API Bot (Systems 1, 2 & 3)
+# Combined BTC REST API Bot (Systems 1, 2, 3 & 4)
 # -------------------------------
 class BTCRESTBot:
     def __init__(self):
@@ -1109,7 +1333,7 @@ class BTCRESTBot:
 
     def check_and_update_expiry(self):
         """Check if we need to update the active expiry"""
-        global price_history, last_spike_alert, last_spread_alert
+        global price_history, last_spike_alert, last_spread_alert, last_premium_match_alert
         
         current_time = datetime.now().timestamp()
         if current_time - self.last_expiry_check >= EXPIRY_CHECK_INTERVAL:
@@ -1150,6 +1374,11 @@ class BTCRESTBot:
                         if symbol in last_spread_alert:
                             del last_spread_alert[symbol]
                     
+                    # Clear System 4 alert timestamps
+                    keys_to_remove = [k for k in last_premium_match_alert.keys() if 'BTC' in k]
+                    for key in keys_to_remove:
+                        del last_premium_match_alert[key]
+                    
                     send_telegram(f"🔄 BTC Expiry Rollover Complete!\n\n📅 Now monitoring: {self.active_expiry}\n⏰ Time: {current_time_str}")
                     return True
                 else:
@@ -1183,6 +1412,11 @@ class BTCRESTBot:
                             del last_spike_alert[symbol]
                         if symbol in last_spread_alert:
                             del last_spread_alert[symbol]
+                    
+                    # Clear System 4 alert timestamps
+                    keys_to_remove = [k for k in last_premium_match_alert.keys() if 'BTC' in k]
+                    for key in keys_to_remove:
+                        del last_premium_match_alert[key]
                     
                     send_telegram(f"🔄 BTC Expiry Update!\n\n📅 Now monitoring: {self.active_expiry}\n⏰ Time: {current_time_str}")
                     return True
@@ -1519,6 +1753,9 @@ class BTCRESTBot:
                     # SYSTEM 3: Dual condition detection
                     check_premium_spikes_btc(self)
                     
+                    # SYSTEM 4: Exact premium match detection
+                    check_premium_matches_btc(self)
+                    
                     self.last_arbitrage_check = current_time
                     global last_check_time
                     last_check_time = datetime.now()
@@ -1543,7 +1780,7 @@ eth_bot = ETHWebSocketBot()
 btc_bot = BTCRESTBot()
 
 # -------------------------------
-# HTML Template - UPDATED FOR DUAL CONDITION SYSTEM 3
+# HTML Template - UPDATED WITH SYSTEM 4
 # -------------------------------
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -1551,7 +1788,7 @@ HTML_TEMPLATE = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Triple Alert System</title>
+    <title>Quad Alert System</title>
     <style>
         * {
             margin: 0;
@@ -1597,6 +1834,7 @@ HTML_TEMPLATE = '''
             display: flex;
             background: #f8f9fa;
             border-bottom: 2px solid #e9ecef;
+            flex-wrap: wrap;
         }
         
         .tab-btn {
@@ -2028,6 +2266,55 @@ HTML_TEMPLATE = '''
             text-align: center;
         }
         
+        /* System 4 Styles */
+        .system4-panel {
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+            color: white;
+        }
+        
+        .cooldown-control {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: center;
+            margin-top: 15px;
+        }
+        
+        .cooldown-btn {
+            padding: 10px 20px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            transition: all 0.3s ease;
+        }
+        
+        .cooldown-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+        
+        .cooldown-input {
+            width: 100px;
+            text-align: center;
+            padding: 10px;
+            font-size: 1.1rem;
+            border: 2px solid white;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            font-weight: bold;
+        }
+        
+        .stat-highlight {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #f39c12;
+        }
+        
         .footer {
             text-align: center;
             padding: 20px;
@@ -2043,7 +2330,7 @@ HTML_TEMPLATE = '''
             
             .tab-btn {
                 padding: 15px;
-                font-size: 1rem;
+                font-size: 0.9rem;
             }
             
             .tab-content {
@@ -2065,20 +2352,25 @@ HTML_TEMPLATE = '''
             .checkbox-grid {
                 grid-template-columns: 1fr;
             }
+            
+            .cooldown-control {
+                flex-wrap: wrap;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🚀 Triple Alert System</h1>
-            <div class="subtitle">Arbitrage + Option Alerts + Dual Condition Spike Detection</div>
+            <h1>🚀 Quad Alert System</h1>
+            <div class="subtitle">Arbitrage + Option Alerts + Spike Detection + Premium Match</div>
         </div>
         
         <div class="tabs">
             <button class="tab-btn active" onclick="showTab('arbitrage')">Arbitrage System</button>
             <button class="tab-btn" onclick="showTab('option-alerts')">Option Alerts</button>
             <button class="tab-btn" onclick="showTab('spike-detector')">Spike Detector</button>
+            <button class="tab-btn" onclick="showTab('premium-match')">Premium Match</button>
         </div>
         
         <!-- Success Message -->
@@ -2464,6 +2756,104 @@ HTML_TEMPLATE = '''
             </div>
         </div>
         
+        <!-- Tab 4: Premium Match Detector (System 4) -->
+        <div id="premium-match-tab" class="tab-content">
+            <div class="system-section">
+                <h2 class="section-title">🎯 EXACT PREMIUM MATCH DETECTOR</h2>
+                
+                <!-- Main Control Panel -->
+                <div class="condition-panel system4-panel">
+                    <h3>📊 SYSTEM 4 STATUS</h3>
+                    
+                    <div class="condition-status">
+                        <div>
+                            <strong>Status:</strong>
+                            <span style="color: {% if system4_active %}#2ecc71{% else %}#e74c3c{% endif %}; font-weight: bold;">
+                                {% if system4_active %}🟢 RUNNING{% else %}🔴 STOPPED{% endif %}
+                            </span>
+                        </div>
+                        <div class="cooldown-note">
+                            ⏰ Cooldown: {{ premium_match_config.cooldown_seconds }} seconds
+                        </div>
+                    </div>
+                    
+                    <div class="condition-controls" style="display: flex; gap: 15px; margin-top: 20px;">
+                        <form action="/start_system4" method="POST" style="flex: 1;">
+                            <button type="submit" class="start-btn" style="background: #2ecc71; width: 100%;">
+                                ▶️ START SYSTEM 4
+                            </button>
+                        </form>
+                        <form action="/stop_system4" method="POST" style="flex: 1;">
+                            <button type="submit" class="stop-btn" style="background: #e74c3c; width: 100%;">
+                                ⏸️ STOP SYSTEM 4
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                
+                <!-- Cooldown Configuration -->
+                <div class="config-section" style="margin-top: 20px;">
+                    <h4>⚙️ COOLDOWN CONFIGURATION</h4>
+                    <p style="color: #666; margin-bottom: 15px;">
+                        Prevents duplicate alerts for the same premium match
+                    </p>
+                    
+                    <form action="/update_system4_cooldown" method="POST">
+                        <div class="config-row">
+                            <label for="cooldown_seconds">Cooldown Duration (seconds):</label>
+                            <div class="cooldown-control">
+                                <button type="button" onclick="decrementCooldown()" class="cooldown-btn">-</button>
+                                <input type="number" id="cooldown_seconds" name="cooldown_seconds" 
+                                       value="{{ premium_match_config.cooldown_seconds }}" 
+                                       step="5" min="5" max="300"
+                                       class="cooldown-input">
+                                <button type="button" onclick="incrementCooldown()" class="cooldown-btn">+</button>
+                                <span style="margin-left: 10px;">seconds</span>
+                            </div>
+                            <small>
+                                ⏰ Alerts for the same premium match will not repeat within this time period
+                            </small>
+                        </div>
+                        
+                        <button type="submit" class="save-btn" style="background: #f39c12; margin-top: 20px;">
+                            💾 UPDATE COOLDOWN
+                        </button>
+                    </form>
+                </div>
+                
+                <!-- Statistics Panel -->
+                <div class="status-panel" style="margin-top: 20px;">
+                    <h3>📈 SYSTEM 4 STATISTICS</h3>
+                    <div class="status-item">
+                        <span class="status-label">Total Matches Found:</span>
+                        <span class="status-value stat-highlight">{{ system4_match_count }}</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Last Alert:</span>
+                        <span class="status-value">
+                            {% if system4_last_alert %}
+                                {{ system4_last_alert }}
+                            {% else %}
+                                Never
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Active Since:</span>
+                        <span class="status-value">
+                            {% if system4_active and system4_start_time %}
+                                {{ system4_start_time }}
+                            {% elif system4_active %}
+                                Currently running
+                            {% else %}
+                                Not running
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <div class="footer">
             <p>Auto-expiry at 5:30 PM IST • All systems running simultaneously</p>
             <p>Last Update: {{ get_ist_time() }} • <a href="/health" style="color: #4a6ee0;">Health Check</a></p>
@@ -2489,6 +2879,22 @@ HTML_TEMPLATE = '''
             event.target.classList.add('active');
         }
         
+        function decrementCooldown() {
+            let input = document.getElementById('cooldown_seconds');
+            let currentValue = parseInt(input.value);
+            if (currentValue > 5) {
+                input.value = currentValue - 5;
+            }
+        }
+        
+        function incrementCooldown() {
+            let input = document.getElementById('cooldown_seconds');
+            let currentValue = parseInt(input.value);
+            if (currentValue < 300) {
+                input.value = currentValue + 5;
+            }
+        }
+        
         // Auto-refresh page every 30 seconds
         setTimeout(function() {
             window.location.reload();
@@ -2509,8 +2915,13 @@ def home():
                                  btc_bot=btc_bot,
                                  alert_configs=alert_configs,
                                  spike_config=spike_config,
+                                 premium_match_config=premium_match_config,
                                  DELTA_THRESHOLD=DELTA_THRESHOLD,
                                  new_system_active=new_system_active,
+                                 system4_active=system4_active,
+                                 system4_match_count=system4_match_count,
+                                 system4_last_alert=system4_last_alert,
+                                 system4_start_time=system4_start_time,
                                  last_check_time=last_check_time,
                                  now=now,
                                  get_ist_time=get_ist_time,
@@ -2742,6 +3153,64 @@ def update_spike_config():
         print(f"[{datetime.now()}] ❌ Error updating spike config: {e}")
         return redirect('/?success=Error+updating+configuration')
 
+# -------------------------------
+# System 4 Routes
+# -------------------------------
+@app.route('/start_system4', methods=['POST'])
+def start_system4():
+    """Start System 4: Exact Premium Match Detection"""
+    global system4_active, system4_start_time, premium_match_config
+    
+    if not system4_active:
+        system4_active = True
+        premium_match_config.enabled = True
+        system4_start_time = get_ist_time()
+        send_telegram(f"🎯 SYSTEM 4: EXACT PREMIUM MATCH DETECTION STARTED!\n\n⚡ Cooldown: {premium_match_config.cooldown_seconds} seconds\n⏰ Time: {get_ist_time()}\n\nDetecting when bid of one strike exactly equals ask of another strike!")
+        print(f"[{datetime.now()}] ✅ System 4: Premium match detection started")
+    
+    return redirect('/?success=System+4+started!')
+
+@app.route('/stop_system4', methods=['POST'])
+def stop_system4():
+    """Stop System 4: Exact Premium Match Detection"""
+    global system4_active, premium_match_config
+    
+    if system4_active:
+        system4_active = False
+        premium_match_config.enabled = False
+        send_telegram(f"⏸️ SYSTEM 4: EXACT PREMIUM MATCH DETECTION STOPPED\n\n⏰ Time: {get_ist_time()}\n\nPremium match detection paused.")
+        print(f"[{datetime.now()}] ⏸️ System 4: Premium match detection stopped")
+    
+    return redirect('/?success=System+4+stopped!')
+
+@app.route('/update_system4_cooldown', methods=['POST'])
+def update_system4_cooldown():
+    """Update System 4 cooldown configuration"""
+    global premium_match_config
+    
+    try:
+        old_cooldown = premium_match_config.cooldown_seconds
+        new_cooldown = int(request.form.get('cooldown_seconds', 60))
+        
+        if new_cooldown < 5:
+            new_cooldown = 5
+        if new_cooldown > 300:
+            new_cooldown = 300
+            
+        premium_match_config.cooldown_seconds = new_cooldown
+        
+        # Send Telegram notification
+        current_time_str = get_ist_time()
+        send_telegram(f"⚙️ SYSTEM 4 COOLDOWN UPDATED\n\n⏰ Old Cooldown: {old_cooldown} seconds\n⏰ New Cooldown: {new_cooldown} seconds\n\nAlerts will not repeat for {new_cooldown} seconds\n⏰ Time: {current_time_str}")
+        
+        print(f"[{datetime.now()}] ✅ System 4 cooldown updated: {old_cooldown}s → {new_cooldown}s")
+        
+        return redirect('/?success=System+4+cooldown+updated+successfully!')
+        
+    except Exception as e:
+        print(f"[{datetime.now()}] ❌ Error updating System 4 cooldown: {e}")
+        return redirect('/?success=Error+updating+cooldown')
+
 @app.route('/health')
 def health():
     current_time_str = get_ist_time()
@@ -2791,6 +3260,13 @@ def health():
             },
             "cooldown": "120 seconds (2 minutes)"
         },
+        "system_4_premium_match": {
+            "active": system4_active,
+            "cooldown_seconds": premium_match_config.cooldown_seconds,
+            "total_matches": system4_match_count,
+            "last_alert": system4_last_alert,
+            "start_time": system4_start_time
+        },
         "current_time": current_time_str,
         "expiry_display": format_expiry_display(eth_bot.active_expiry)
     }, 200
@@ -2817,7 +3293,7 @@ def ping():
 # -------------------------------
 def start_bots():
     print("="*60)
-    print("TRIPLE ALERT SYSTEM")
+    print("QUAD ALERT SYSTEM")
     print("="*60)
     print(f"⚡ System 1: Arbitrage Alerts")
     print(f"   • ETH Threshold: ${DELTA_THRESHOLD['ETH']:.2f}")
@@ -2831,6 +3307,9 @@ def start_bots():
     print(f"   • Condition 2: Bid-ask spread ≥ {spike_config.min_spread_percent}%")
     print(f"   • Condition 2 Premium Filter: ≥ ${spike_config.spread_min_premium:.2f}")
     print(f"   • Cooldown: 120 seconds (2 minutes) fixed")
+    print(f"🎯 System 4: Exact Premium Match Detection")
+    print(f"   • Cooldown: {premium_match_config.cooldown_seconds} seconds (configurable)")
+    print(f"   • Detects: Bid of one strike = Ask of another strike")
     print(f"📅 Current expiry: {get_current_expiry()}")
     print(f"🔄 Auto-expiry at 5:30 PM IST")
     print("="*60)
@@ -2842,7 +3321,7 @@ def start_bots():
     btc_thread = threading.Thread(target=btc_bot.start_monitoring, daemon=True)
     btc_thread.start()
     
-    print(f"[{datetime.now()}] ✅ All three systems started")
+    print(f"[{datetime.now()}] ✅ All four systems started")
 
 if __name__ == "__main__":
     start_bots()
