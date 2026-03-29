@@ -91,6 +91,7 @@ SPIKE_COOLDOWN_SECONDS = 120
 class PremiumMatchConfig:
     enabled: bool = False  # System 4 master switch
     cooldown_seconds: int = 60  # Cooldown between alerts (user configurable)
+    min_premium_filter: float = 0.0  # Minimum premium filter (only alert if premium >= this value)
 
 # System 4 data storage
 premium_match_config = PremiumMatchConfig()
@@ -273,12 +274,15 @@ def send_spread_alert_telegram(symbol: str, bid_price: float, ask_price: float, 
 # -------------------------------
 def send_premium_match_telegram(asset: str, option_type: str, 
                                 strike_bid: int, strike_ask: int,
-                                bid_price: float, ask_price: float):
+                                bid_price: float, ask_price: float, 
+                                min_filter: float):
     """Send Telegram message for System 4: Exact premium matches"""
     global system4_match_count, system4_last_alert
     
     system4_match_count += 1
     system4_last_alert = get_ist_time()
+    
+    filter_status = "PASSED" if bid_price >= min_filter else "FAILED"
     
     message = f"""
 🎯 **SYSTEM 4: EXACT PREMIUM MATCH DETECTED!**
@@ -290,15 +294,17 @@ def send_premium_match_telegram(asset: str, option_type: str,
 • Strike {strike_ask} Ask: ${ask_price:.2f}
 • **Match: ${bid_price:.2f} = ${ask_price:.2f}** ✅
 
+💰 **Premium Filter:** ≥ ${min_filter:.2f} ({filter_status})
+
 **Time:** {get_ist_time()}
 """
     
     send_telegram(message)
-    print(f"[{datetime.now()}] 🎯 System 4: Premium match - {asset} {strike_bid} bid ${bid_price:.2f} = {strike_ask} ask ${ask_price:.2f}")
+    print(f"[{datetime.now()}] 🎯 System 4: Premium match - {asset} {strike_bid} bid ${bid_price:.2f} = {strike_ask} ask ${ask_price:.2f} (Filter: ≥${min_filter:.2f})")
 
 def check_premium_matches_eth(eth_bot):
     """System 4: Check for exact premium matches in ETH options"""
-    global last_premium_match_alert, system4_active
+    global last_premium_match_alert, system4_active, premium_match_config
     
     if not system4_active or not premium_match_config.enabled:
         return
@@ -356,13 +362,16 @@ def check_premium_matches_eth(eth_bot):
             higher_ask = strikes_data[strike_higher]['call']['ask']
             
             if lower_bid > 0 and higher_ask > 0 and lower_bid == higher_ask:
-                alert_key = f"ETH_CALL_{strike_lower}_{strike_higher}"
-                now = datetime.now().timestamp()
-                last_alert = last_premium_match_alert.get(alert_key, 0)
-                
-                if now - last_alert >= premium_match_config.cooldown_seconds:
-                    last_premium_match_alert[alert_key] = now
-                    send_premium_match_telegram('ETH', 'call', strike_lower, strike_higher, lower_bid, higher_ask)
+                # Apply premium filter
+                if lower_bid >= premium_match_config.min_premium_filter:
+                    alert_key = f"ETH_CALL_{strike_lower}_{strike_higher}"
+                    now = datetime.now().timestamp()
+                    last_alert = last_premium_match_alert.get(alert_key, 0)
+                    
+                    if now - last_alert >= premium_match_config.cooldown_seconds:
+                        last_premium_match_alert[alert_key] = now
+                        send_premium_match_telegram('ETH', 'call', strike_lower, strike_higher, 
+                                                   lower_bid, higher_ask, premium_match_config.min_premium_filter)
     
     # Check PUT options: bid of higher strike = ask of lower strike
     for i in range(len(sorted_strikes)):
@@ -375,17 +384,20 @@ def check_premium_matches_eth(eth_bot):
             lower_ask = strikes_data[strike_lower]['put']['ask']
             
             if higher_bid > 0 and lower_ask > 0 and higher_bid == lower_ask:
-                alert_key = f"ETH_PUT_{strike_higher}_{strike_lower}"
-                now = datetime.now().timestamp()
-                last_alert = last_premium_match_alert.get(alert_key, 0)
-                
-                if now - last_alert >= premium_match_config.cooldown_seconds:
-                    last_premium_match_alert[alert_key] = now
-                    send_premium_match_telegram('ETH', 'put', strike_higher, strike_lower, higher_bid, lower_ask)
+                # Apply premium filter
+                if higher_bid >= premium_match_config.min_premium_filter:
+                    alert_key = f"ETH_PUT_{strike_higher}_{strike_lower}"
+                    now = datetime.now().timestamp()
+                    last_alert = last_premium_match_alert.get(alert_key, 0)
+                    
+                    if now - last_alert >= premium_match_config.cooldown_seconds:
+                        last_premium_match_alert[alert_key] = now
+                        send_premium_match_telegram('ETH', 'put', strike_higher, strike_lower, 
+                                                   higher_bid, lower_ask, premium_match_config.min_premium_filter)
 
 def check_premium_matches_btc(btc_bot):
     """System 4: Check for exact premium matches in BTC options"""
-    global last_premium_match_alert, system4_active
+    global last_premium_match_alert, system4_active, premium_match_config
     
     if not system4_active or not premium_match_config.enabled:
         return
@@ -437,13 +449,16 @@ def check_premium_matches_btc(btc_bot):
             higher_ask = strikes_data[strike_higher]['call']['ask']
             
             if lower_bid > 0 and higher_ask > 0 and lower_bid == higher_ask:
-                alert_key = f"BTC_CALL_{strike_lower}_{strike_higher}"
-                now = datetime.now().timestamp()
-                last_alert = last_premium_match_alert.get(alert_key, 0)
-                
-                if now - last_alert >= premium_match_config.cooldown_seconds:
-                    last_premium_match_alert[alert_key] = now
-                    send_premium_match_telegram('BTC', 'call', strike_lower, strike_higher, lower_bid, higher_ask)
+                # Apply premium filter
+                if lower_bid >= premium_match_config.min_premium_filter:
+                    alert_key = f"BTC_CALL_{strike_lower}_{strike_higher}"
+                    now = datetime.now().timestamp()
+                    last_alert = last_premium_match_alert.get(alert_key, 0)
+                    
+                    if now - last_alert >= premium_match_config.cooldown_seconds:
+                        last_premium_match_alert[alert_key] = now
+                        send_premium_match_telegram('BTC', 'call', strike_lower, strike_higher, 
+                                                   lower_bid, higher_ask, premium_match_config.min_premium_filter)
     
     # Check PUT options: bid of higher strike = ask of lower strike
     for i in range(len(sorted_strikes)):
@@ -455,13 +470,16 @@ def check_premium_matches_btc(btc_bot):
             lower_ask = strikes_data[strike_lower]['put']['ask']
             
             if higher_bid > 0 and lower_ask > 0 and higher_bid == lower_ask:
-                alert_key = f"BTC_PUT_{strike_higher}_{strike_lower}"
-                now = datetime.now().timestamp()
-                last_alert = last_premium_match_alert.get(alert_key, 0)
-                
-                if now - last_alert >= premium_match_config.cooldown_seconds:
-                    last_premium_match_alert[alert_key] = now
-                    send_premium_match_telegram('BTC', 'put', strike_higher, strike_lower, higher_bid, lower_ask)
+                # Apply premium filter
+                if higher_bid >= premium_match_config.min_premium_filter:
+                    alert_key = f"BTC_PUT_{strike_higher}_{strike_lower}"
+                    now = datetime.now().timestamp()
+                    last_alert = last_premium_match_alert.get(alert_key, 0)
+                    
+                    if now - last_alert >= premium_match_config.cooldown_seconds:
+                        last_premium_match_alert[alert_key] = now
+                        send_premium_match_telegram('BTC', 'put', strike_higher, strike_lower, 
+                                                   higher_bid, lower_ask, premium_match_config.min_premium_filter)
 
 # -------------------------------
 # System 3: Dual Condition Detection Functions
@@ -1780,7 +1798,7 @@ eth_bot = ETHWebSocketBot()
 btc_bot = BTCRESTBot()
 
 # -------------------------------
-# HTML Template - UPDATED WITH SYSTEM 4
+# HTML Template - UPDATED WITH SYSTEM 4 PREMIUM FILTER
 # -------------------------------
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -2309,6 +2327,18 @@ HTML_TEMPLATE = '''
             font-weight: bold;
         }
         
+        .filter-input {
+            width: 150px;
+            text-align: center;
+            padding: 10px;
+            font-size: 1.1rem;
+            border: 2px solid #f39c12;
+            border-radius: 8px;
+            background: white;
+            color: #333;
+            font-weight: bold;
+        }
+        
         .stat-highlight {
             font-size: 1.5rem;
             font-weight: bold;
@@ -2821,6 +2851,36 @@ HTML_TEMPLATE = '''
                     </form>
                 </div>
                 
+                <!-- Premium Filter Configuration -->
+                <div class="config-section" style="margin-top: 20px;">
+                    <h4>💰 PREMIUM FILTER CONFIGURATION</h4>
+                    <p style="color: #666; margin-bottom: 15px;">
+                        Only trigger alerts when matched premium is above or equal to the filter value
+                    </p>
+                    
+                    <form action="/update_system4_filter" method="POST">
+                        <div class="config-row">
+                            <label for="min_premium_filter">Minimum Premium Filter ($):</label>
+                            <div class="cooldown-control">
+                                <button type="button" onclick="decrementFilter()" class="cooldown-btn" style="background: #f39c12;">-</button>
+                                <input type="number" id="min_premium_filter" name="min_premium_filter" 
+                                       value="{{ premium_match_config.min_premium_filter }}" 
+                                       step="0.5" min="0" max="1000"
+                                       class="filter-input">
+                                <button type="button" onclick="incrementFilter()" class="cooldown-btn" style="background: #f39c12;">+</button>
+                                <span style="margin-left: 10px;">dollars ($)</span>
+                            </div>
+                            <small>
+                                💰 Only alert when matched premium ≥ ${{ premium_match_config.min_premium_filter }}
+                            </small>
+                        </div>
+                        
+                        <button type="submit" class="save-btn" style="background: #e67e22; margin-top: 20px;">
+                            💾 UPDATE PREMIUM FILTER
+                        </button>
+                    </form>
+                </div>
+                
                 <!-- Statistics Panel -->
                 <div class="status-panel" style="margin-top: 20px;">
                     <h3>📈 SYSTEM 4 STATISTICS</h3>
@@ -2849,6 +2909,10 @@ HTML_TEMPLATE = '''
                                 Not running
                             {% endif %}
                         </span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Premium Filter:</span>
+                        <span class="status-value">≥ ${{ "%.2f"|format(premium_match_config.min_premium_filter) }}</span>
                     </div>
                 </div>
             </div>
@@ -2892,6 +2956,22 @@ HTML_TEMPLATE = '''
             let currentValue = parseInt(input.value);
             if (currentValue < 300) {
                 input.value = currentValue + 5;
+            }
+        }
+        
+        function decrementFilter() {
+            let input = document.getElementById('min_premium_filter');
+            let currentValue = parseFloat(input.value);
+            if (currentValue >= 0.5) {
+                input.value = (currentValue - 0.5).toFixed(1);
+            }
+        }
+        
+        function incrementFilter() {
+            let input = document.getElementById('min_premium_filter');
+            let currentValue = parseFloat(input.value);
+            if (currentValue <= 999) {
+                input.value = (currentValue + 0.5).toFixed(1);
             }
         }
         
@@ -3165,7 +3245,7 @@ def start_system4():
         system4_active = True
         premium_match_config.enabled = True
         system4_start_time = get_ist_time()
-        send_telegram(f"🎯 SYSTEM 4: EXACT PREMIUM MATCH DETECTION STARTED!\n\n⚡ Cooldown: {premium_match_config.cooldown_seconds} seconds\n⏰ Time: {get_ist_time()}\n\nDetecting when bid of one strike exactly equals ask of another strike!")
+        send_telegram(f"🎯 SYSTEM 4: EXACT PREMIUM MATCH DETECTION STARTED!\n\n⚡ Cooldown: {premium_match_config.cooldown_seconds} seconds\n💰 Premium Filter: ≥ ${premium_match_config.min_premium_filter:.2f}\n⏰ Time: {get_ist_time()}\n\nDetecting when bid of one strike exactly equals ask of another strike!")
         print(f"[{datetime.now()}] ✅ System 4: Premium match detection started")
     
     return redirect('/?success=System+4+started!')
@@ -3210,6 +3290,34 @@ def update_system4_cooldown():
     except Exception as e:
         print(f"[{datetime.now()}] ❌ Error updating System 4 cooldown: {e}")
         return redirect('/?success=Error+updating+cooldown')
+
+@app.route('/update_system4_filter', methods=['POST'])
+def update_system4_filter():
+    """Update System 4 premium filter configuration"""
+    global premium_match_config
+    
+    try:
+        old_filter = premium_match_config.min_premium_filter
+        new_filter = float(request.form.get('min_premium_filter', 0))
+        
+        if new_filter < 0:
+            new_filter = 0
+        if new_filter > 1000:
+            new_filter = 1000
+            
+        premium_match_config.min_premium_filter = new_filter
+        
+        # Send Telegram notification
+        current_time_str = get_ist_time()
+        send_telegram(f"💰 SYSTEM 4 PREMIUM FILTER UPDATED\n\n📊 Old Filter: ≥ ${old_filter:.2f}\n📊 New Filter: ≥ ${new_filter:.2f}\n\nOnly matches with premium ≥ ${new_filter:.2f} will trigger alerts\n⏰ Time: {current_time_str}")
+        
+        print(f"[{datetime.now()}] ✅ System 4 premium filter updated: ≥${old_filter:.2f} → ≥${new_filter:.2f}")
+        
+        return redirect('/?success=System+4+premium+filter+updated+successfully!')
+        
+    except Exception as e:
+        print(f"[{datetime.now()}] ❌ Error updating System 4 filter: {e}")
+        return redirect('/?success=Error+updating+filter')
 
 @app.route('/health')
 def health():
@@ -3263,6 +3371,7 @@ def health():
         "system_4_premium_match": {
             "active": system4_active,
             "cooldown_seconds": premium_match_config.cooldown_seconds,
+            "min_premium_filter": premium_match_config.min_premium_filter,
             "total_matches": system4_match_count,
             "last_alert": system4_last_alert,
             "start_time": system4_start_time
@@ -3309,6 +3418,7 @@ def start_bots():
     print(f"   • Cooldown: 120 seconds (2 minutes) fixed")
     print(f"🎯 System 4: Exact Premium Match Detection")
     print(f"   • Cooldown: {premium_match_config.cooldown_seconds} seconds (configurable)")
+    print(f"   • Premium Filter: ≥ ${premium_match_config.min_premium_filter:.2f}")
     print(f"   • Detects: Bid of one strike = Ask of another strike")
     print(f"📅 Current expiry: {get_current_expiry()}")
     print(f"🔄 Auto-expiry at 5:30 PM IST")
