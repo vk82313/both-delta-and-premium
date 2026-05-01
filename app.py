@@ -91,8 +91,8 @@ SPIKE_COOLDOWN_SECONDS = 120
 class PremiumMatchConfig:
     enabled: bool = False
     cooldown_seconds: int = 60
-    btc_min_premium: float = 0.0  # BTC premium filter
-    eth_min_premium: float = 0.0  # ETH premium filter
+    btc_min_premium: float = 0.0
+    eth_min_premium: float = 0.0
 
 # System 4 data storage
 premium_match_config = PremiumMatchConfig()
@@ -102,6 +102,35 @@ system4_btc_match_count = 0
 system4_eth_match_count = 0
 system4_last_alert = None
 system4_start_time = None
+
+# -------------------------------
+# System 5: Premium Tracker Configuration
+# -------------------------------
+@dataclass
+class PremiumTrackerConfig:
+    active: bool = False
+    strike: float = 0
+    last_ask_price: float = 0.0
+    last_alert_time: float = 0.0
+
+# System 5 data storage
+premium_tracker_configs = {
+    'btc_call': PremiumTrackerConfig(),
+    'btc_put': PremiumTrackerConfig(),
+    'eth_call': PremiumTrackerConfig(),
+    'eth_put': PremiumTrackerConfig()
+}
+
+# System 5 cooldown (120 seconds)
+SYSTEM5_COOLDOWN = 120
+
+# System 5 alert counters
+system5_alert_counts = {
+    'btc_call': 0,
+    'btc_put': 0,
+    'eth_call': 0,
+    'eth_put': 0
+}
 
 # -------------------------------
 # Utility Functions
@@ -268,8 +297,28 @@ def send_spread_alert_telegram(symbol: str, bid_price: float, ask_price: float, 
     send_telegram(message)
     print(f"[{datetime.now()}] 🚨 Condition 2: Spread alert sent for {symbol}: Bid ${bid_price:.2f}, Ask ${ask_price:.2f}, Spread {spread_percent:.1f}%")
 
+def send_system5_alert_telegram(asset: str, option_type: str, strike: float, old_ask: float, new_ask: float):
+    """Send Telegram message for System 5: Premium change"""
+    change = new_ask - old_ask
+    change_percent = (change / old_ask) * 100 if old_ask > 0 else 0
+    
+    direction = "📈" if change > 0 else "📉"
+    sign = "+" if change > 0 else ""
+    
+    message = f"""
+🔔 **PREMIUM CHANGE ALERT**
+
+📊 **{asset} {strike} {option_type.upper()}**
+💰 Ask Price: ${old_ask:.2f} → ${new_ask:.2f}
+{direction} Change: {sign}${change:.2f} ({sign}{change_percent:.2f}%)
+⏰ Time: {get_ist_time()}
+"""
+    
+    send_telegram(message)
+    print(f"[{datetime.now()}] 🔔 System 5: {asset} {strike} {option_type} ASK changed: ${old_ask:.2f} → ${new_ask:.2f}")
+
 # -------------------------------
-# System 4: Premium Match Functions (CORRECT LOGIC)
+# System 4: Premium Match Functions
 # -------------------------------
 def send_premium_match_telegram(asset: str, option_type: str, 
                                 strike_ask: int, strike_bid: int,
@@ -311,13 +360,12 @@ def send_premium_match_telegram(asset: str, option_type: str,
     print(f"[{datetime.now()}] 🎯 System 4: Premium match - {asset} {option_type} - Ask {strike_ask} ${ask_price:.2f} = Bid {strike_bid} ${bid_price:.2f}")
 
 def check_premium_matches_eth(eth_bot):
-    """System 4: Check for exact premium matches in ETH options (CORRECT LOGIC)"""
+    """System 4: Check for exact premium matches in ETH options"""
     global last_premium_match_alert, system4_active, premium_match_config
     
     if not system4_active or not premium_match_config.enabled:
         return
     
-    # Get all strikes with valid prices
     strikes_data = {}
     
     for symbol, price_data in eth_bot.options_prices.items():
@@ -367,7 +415,6 @@ def check_premium_matches_eth(eth_bot):
             higher_bid = strikes_data[strike_higher]['call']['bid']
             
             if lower_ask > 0 and higher_bid > 0 and lower_ask == higher_bid:
-                # Apply ETH premium filter
                 if lower_ask >= premium_match_config.eth_min_premium:
                     alert_key = f"ETH_CALL_{strike_lower}_{strike_higher}"
                     now = datetime.now().timestamp()
@@ -390,7 +437,6 @@ def check_premium_matches_eth(eth_bot):
             lower_bid = strikes_data[strike_lower]['put']['bid']
             
             if higher_ask > 0 and lower_bid > 0 and higher_ask == lower_bid:
-                # Apply ETH premium filter
                 if higher_ask >= premium_match_config.eth_min_premium:
                     alert_key = f"ETH_PUT_{strike_higher}_{strike_lower}"
                     now = datetime.now().timestamp()
@@ -404,13 +450,12 @@ def check_premium_matches_eth(eth_bot):
                                                    premium_match_config.eth_min_premium)
 
 def check_premium_matches_btc(btc_bot):
-    """System 4: Check for exact premium matches in BTC options (CORRECT LOGIC)"""
+    """System 4: Check for exact premium matches in BTC options"""
     global last_premium_match_alert, system4_active, premium_match_config
     
     if not system4_active or not premium_match_config.enabled:
         return
     
-    # Get all strikes with valid prices
     strikes_data = {}
     
     for symbol, price_data in btc_bot.options_prices.items():
@@ -456,7 +501,6 @@ def check_premium_matches_btc(btc_bot):
             higher_bid = strikes_data[strike_higher]['call']['bid']
             
             if lower_ask > 0 and higher_bid > 0 and lower_ask == higher_bid:
-                # Apply BTC premium filter
                 if lower_ask >= premium_match_config.btc_min_premium:
                     alert_key = f"BTC_CALL_{strike_lower}_{strike_higher}"
                     now = datetime.now().timestamp()
@@ -479,7 +523,6 @@ def check_premium_matches_btc(btc_bot):
             lower_bid = strikes_data[strike_lower]['put']['bid']
             
             if higher_ask > 0 and lower_bid > 0 and higher_ask == lower_bid:
-                # Apply BTC premium filter
                 if higher_ask >= premium_match_config.btc_min_premium:
                     alert_key = f"BTC_PUT_{strike_higher}_{strike_lower}"
                     now = datetime.now().timestamp()
@@ -491,6 +534,101 @@ def check_premium_matches_btc(btc_bot):
                                                    higher_ask, lower_bid,
                                                    premium_match_config.btc_min_premium,
                                                    premium_match_config.eth_min_premium)
+
+# -------------------------------
+# System 5: Premium Tracker Functions
+# -------------------------------
+def get_eth_symbol(eth_bot, strike: float, option_type: str) -> Optional[str]:
+    """Get the symbol for a specific ETH strike and type"""
+    if option_type == 'call':
+        for s, symbol in eth_bot.option_chain_data['calls'].items():
+            if s == strike:
+                return symbol
+    else:
+        for s, symbol in eth_bot.option_chain_data['puts'].items():
+            if s == strike:
+                return symbol
+    return None
+
+def get_btc_symbol(btc_bot, strike: float, option_type: str) -> Optional[str]:
+    """Get the symbol for a specific BTC strike and type"""
+    if option_type == 'call':
+        for s, symbol in btc_bot.option_chain_data['calls'].items():
+            if s == strike:
+                return symbol
+    else:
+        for s, symbol in btc_bot.option_chain_data['puts'].items():
+            if s == strike:
+                return symbol
+    return None
+
+def check_system5_eth(eth_bot):
+    """System 5: Check for ASK price changes in ETH options"""
+    global premium_tracker_configs, system5_alert_counts
+    
+    # Check ETH CALL
+    config = premium_tracker_configs['eth_call']
+    if config.active and config.strike > 0:
+        symbol = get_eth_symbol(eth_bot, config.strike, 'call')
+        if symbol and symbol in eth_bot.options_prices:
+            current_ask = eth_bot.options_prices[symbol]['ask']
+            if current_ask > 0 and config.last_ask_price > 0 and current_ask != config.last_ask_price:
+                now = datetime.now().timestamp()
+                if now - config.last_alert_time >= SYSTEM5_COOLDOWN:
+                    send_system5_alert_telegram('ETH', 'call', config.strike, config.last_ask_price, current_ask)
+                    config.last_alert_time = now
+                    system5_alert_counts['eth_call'] += 1
+            if current_ask > 0:
+                config.last_ask_price = current_ask
+    
+    # Check ETH PUT
+    config = premium_tracker_configs['eth_put']
+    if config.active and config.strike > 0:
+        symbol = get_eth_symbol(eth_bot, config.strike, 'put')
+        if symbol and symbol in eth_bot.options_prices:
+            current_ask = eth_bot.options_prices[symbol]['ask']
+            if current_ask > 0 and config.last_ask_price > 0 and current_ask != config.last_ask_price:
+                now = datetime.now().timestamp()
+                if now - config.last_alert_time >= SYSTEM5_COOLDOWN:
+                    send_system5_alert_telegram('ETH', 'put', config.strike, config.last_ask_price, current_ask)
+                    config.last_alert_time = now
+                    system5_alert_counts['eth_put'] += 1
+            if current_ask > 0:
+                config.last_ask_price = current_ask
+
+def check_system5_btc(btc_bot):
+    """System 5: Check for ASK price changes in BTC options"""
+    global premium_tracker_configs, system5_alert_counts
+    
+    # Check BTC CALL
+    config = premium_tracker_configs['btc_call']
+    if config.active and config.strike > 0:
+        symbol = get_btc_symbol(btc_bot, config.strike, 'call')
+        if symbol and symbol in btc_bot.options_prices:
+            current_ask = btc_bot.options_prices[symbol]['ask']
+            if current_ask > 0 and config.last_ask_price > 0 and current_ask != config.last_ask_price:
+                now = datetime.now().timestamp()
+                if now - config.last_alert_time >= SYSTEM5_COOLDOWN:
+                    send_system5_alert_telegram('BTC', 'call', config.strike, config.last_ask_price, current_ask)
+                    config.last_alert_time = now
+                    system5_alert_counts['btc_call'] += 1
+            if current_ask > 0:
+                config.last_ask_price = current_ask
+    
+    # Check BTC PUT
+    config = premium_tracker_configs['btc_put']
+    if config.active and config.strike > 0:
+        symbol = get_btc_symbol(btc_bot, config.strike, 'put')
+        if symbol and symbol in btc_bot.options_prices:
+            current_ask = btc_bot.options_prices[symbol]['ask']
+            if current_ask > 0 and config.last_ask_price > 0 and current_ask != config.last_ask_price:
+                now = datetime.now().timestamp()
+                if now - config.last_alert_time >= SYSTEM5_COOLDOWN:
+                    send_system5_alert_telegram('BTC', 'put', config.strike, config.last_ask_price, current_ask)
+                    config.last_alert_time = now
+                    system5_alert_counts['btc_put'] += 1
+            if current_ask > 0:
+                config.last_ask_price = current_ask
 
 # -------------------------------
 # System 3: Dual Condition Detection Functions
@@ -706,7 +844,7 @@ class ETHWebSocketBot:
         return available_expiries[-1]
 
     def check_and_update_expiry(self):
-        global price_history, last_spike_alert, last_spread_alert, last_premium_match_alert
+        global price_history, last_spike_alert, last_spread_alert, last_premium_match_alert, premium_tracker_configs
         
         current_time = datetime.now().timestamp()
         if current_time - self.last_expiry_check >= EXPIRY_CHECK_INTERVAL:
@@ -734,6 +872,11 @@ class ETHWebSocketBot:
                     for config_id in alert_configs:
                         if alert_configs[config_id].is_monitoring:
                             alert_configs[config_id].active_expiry = self.active_expiry
+                    
+                    # Reset System 5 ETH trackers
+                    for key in ['eth_call', 'eth_put']:
+                        if premium_tracker_configs[key].active:
+                            premium_tracker_configs[key].last_ask_price = 0.0
                     
                     old_symbols = [s for s in price_history.keys() if 'ETH' in s]
                     for symbol in old_symbols:
@@ -773,6 +916,11 @@ class ETHWebSocketBot:
                     for config_id in alert_configs:
                         if alert_configs[config_id].is_monitoring:
                             alert_configs[config_id].active_expiry = self.active_expiry
+                    
+                    # Reset System 5 ETH trackers
+                    for key in ['eth_call', 'eth_put']:
+                        if premium_tracker_configs[key].active:
+                            premium_tracker_configs[key].last_ask_price = 0.0
                     
                     old_symbols = [s for s in price_history.keys() if 'ETH' in s]
                     for symbol in old_symbols:
@@ -985,6 +1133,7 @@ class ETHWebSocketBot:
                     self.check_user_alerts()
                     check_premium_spikes_eth(self)
                     check_premium_matches_eth(self)
+                    check_system5_eth(self)
                     
                     self.last_arbitrage_check = current_time
                     global last_check_time
@@ -1282,7 +1431,7 @@ class BTCRESTBot:
         return available_expiries[-1]
 
     def check_and_update_expiry(self):
-        global price_history, last_spike_alert, last_spread_alert, last_premium_match_alert
+        global price_history, last_spike_alert, last_spread_alert, last_premium_match_alert, premium_tracker_configs
         
         current_time = datetime.now().timestamp()
         if current_time - self.last_expiry_check >= EXPIRY_CHECK_INTERVAL:
@@ -1310,6 +1459,11 @@ class BTCRESTBot:
                     for config_id in alert_configs:
                         if alert_configs[config_id].is_monitoring:
                             alert_configs[config_id].active_expiry = self.active_expiry
+                    
+                    # Reset System 5 BTC trackers
+                    for key in ['btc_call', 'btc_put']:
+                        if premium_tracker_configs[key].active:
+                            premium_tracker_configs[key].last_ask_price = 0.0
                     
                     old_symbols = [s for s in price_history.keys() if 'BTC' in s]
                     for symbol in old_symbols:
@@ -1346,6 +1500,11 @@ class BTCRESTBot:
                     for config_id in alert_configs:
                         if alert_configs[config_id].is_monitoring:
                             alert_configs[config_id].active_expiry = self.active_expiry
+                    
+                    # Reset System 5 BTC trackers
+                    for key in ['btc_call', 'btc_put']:
+                        if premium_tracker_configs[key].active:
+                            premium_tracker_configs[key].last_ask_price = 0.0
                     
                     old_symbols = [s for s in price_history.keys() if 'BTC' in s]
                     for symbol in old_symbols:
@@ -1664,6 +1823,7 @@ class BTCRESTBot:
                     self.check_user_alerts()
                     check_premium_spikes_btc(self)
                     check_premium_matches_btc(self)
+                    check_system5_btc(self)
                     
                     self.last_arbitrage_check = current_time
                     global last_check_time
@@ -1688,7 +1848,7 @@ eth_bot = ETHWebSocketBot()
 btc_bot = BTCRESTBot()
 
 # -------------------------------
-# HTML Template - COMPLETE WITH SYSTEM 4
+# HTML Template
 # -------------------------------
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -1991,7 +2151,6 @@ HTML_TEMPLATE = '''
             color: #e74c3c;
         }
         
-        /* System 3 Styles */
         .dual-condition-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -2235,6 +2394,39 @@ HTML_TEMPLATE = '''
             color: #f39c12;
         }
         
+        /* System 5 Styles */
+        .tracker-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .tracker-card {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 15px;
+            border-top: 5px solid;
+            text-align: center;
+        }
+        
+        .tracker-card.monitoring {
+            background: #f0fff4;
+            box-shadow: 0 0 20px rgba(46, 204, 113, 0.2);
+        }
+        
+        .tracker-card h4 {
+            font-size: 1.3rem;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        .tracker-status {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin: 15px 0;
+        }
+        
         .footer {
             text-align: center;
             padding: 20px;
@@ -2265,6 +2457,10 @@ HTML_TEMPLATE = '''
                 grid-template-columns: 1fr;
             }
             
+            .tracker-grid {
+                grid-template-columns: 1fr;
+            }
+            
             .control-buttons {
                 flex-direction: column;
             }
@@ -2283,14 +2479,15 @@ HTML_TEMPLATE = '''
     <div class="container">
         <div class="header">
             <h1>🚀 Quad Alert System</h1>
-            <div class="subtitle">Arbitrage + Option Alerts + Spike Detection + Premium Match</div>
+            <div class="subtitle">Arbitrage + Option Alerts + Spike Detection + Premium Match + Premium Tracker</div>
         </div>
         
         <div class="tabs">
-            <button class="tab-btn active" onclick="showTab('arbitrage')">Arbitrage System</button>
+            <button class="tab-btn active" onclick="showTab('arbitrage')">Arbitrage</button>
             <button class="tab-btn" onclick="showTab('option-alerts')">Option Alerts</button>
             <button class="tab-btn" onclick="showTab('spike-detector')">Spike Detector</button>
             <button class="tab-btn" onclick="showTab('premium-match')">Premium Match</button>
+            <button class="tab-btn" onclick="showTab('premium-tracker')">Premium Tracker</button>
         </div>
         
         <!-- Success Message -->
@@ -2306,7 +2503,6 @@ HTML_TEMPLATE = '''
                 <h2 class="section-title">⚡ Arbitrage Alert System</h2>
                 
                 <div class="stats-grid">
-                    <!-- ETH Stats Card -->
                     <div class="stat-card">
                         <h3>🔵 ETH WebSocket Bot</h3>
                         <div class="stat-item">
@@ -2331,7 +2527,6 @@ HTML_TEMPLATE = '''
                         </div>
                     </div>
                     
-                    <!-- BTC Stats Card -->
                     <div class="stat-card">
                         <h3>🟠 BTC REST API Bot</h3>
                         <div class="stat-item">
@@ -2359,7 +2554,7 @@ HTML_TEMPLATE = '''
                 
                 <div class="threshold-card">
                     <h3>⚙️ Update Arbitrage Thresholds</h3>
-                    <div class="threshold-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
                         <div>
                             <h4>ETH Threshold: ${{ "%.2f"|format(DELTA_THRESHOLD['ETH']) }}</h4>
                             <form action="/update_eth_threshold" method="POST">
@@ -2407,7 +2602,6 @@ HTML_TEMPLATE = '''
                                        {% if alert_configs['btc_call'].is_monitoring %}checked{% endif %}>
                                 <label for="btc_call_monitor">Monitor BTC Calls</label>
                             </div>
-                            <small style="color: #666;">Found {{ btc_bot.option_chain_data.calls|length }} call strikes</small>
                         </div>
                         
                         <div class="option-card btc-put">
@@ -2428,7 +2622,6 @@ HTML_TEMPLATE = '''
                                        {% if alert_configs['btc_put'].is_monitoring %}checked{% endif %}>
                                 <label for="btc_put_monitor">Monitor BTC Puts</label>
                             </div>
-                            <small style="color: #666;">Found {{ btc_bot.option_chain_data.puts|length }} put strikes</small>
                         </div>
                         
                         <div class="option-card eth-call">
@@ -2449,7 +2642,6 @@ HTML_TEMPLATE = '''
                                        {% if alert_configs['eth_call'].is_monitoring %}checked{% endif %}>
                                 <label for="eth_call_monitor">Monitor ETH Calls</label>
                             </div>
-                            <small style="color: #666;">Found {{ eth_bot.option_chain_data.calls|length }} call strikes</small>
                         </div>
                         
                         <div class="option-card eth-put">
@@ -2470,7 +2662,6 @@ HTML_TEMPLATE = '''
                                        {% if alert_configs['eth_put'].is_monitoring %}checked{% endif %}>
                                 <label for="eth_put_monitor">Monitor ETH Puts</label>
                             </div>
-                            <small style="color: #666;">Found {{ eth_bot.option_chain_data.puts|length }} put strikes</small>
                         </div>
                     </div>
                     
@@ -2503,22 +2694,6 @@ HTML_TEMPLATE = '''
                             {% if alert_configs['eth_put'].is_monitoring %}✅ ACTIVE{% else %}❌ INACTIVE{% endif %}
                         </span>
                     </div>
-                    <div class="status-item">
-                        <span class="status-label">Last Check:</span>
-                        <span class="status-value">
-                            {% if last_check_time %}
-                                {{ (now - last_check_time).seconds }} seconds ago
-                            {% else %}
-                                Never
-                            {% endif %}
-                        </span>
-                    </div>
-                    <div class="status-item">
-                        <span class="status-label">System Status:</span>
-                        <span class="status-value {% if new_system_active %}status-active{% else %}status-inactive{% endif %}">
-                            {% if new_system_active %}✅ RUNNING{% else %}❌ STOPPED{% endif %}
-                        </span>
-                    </div>
                 </div>
             </div>
         </div>
@@ -2538,7 +2713,6 @@ HTML_TEMPLATE = '''
                                     {% if spike_config.enabled_spike %}🟢 RUNNING{% else %}🔴 STOPPED{% endif %}
                                 </span>
                             </div>
-                            <div class="cooldown-note">⏰ Cooldown: 120s</div>
                         </div>
                         <div class="condition-controls">
                             <form action="/start_spike_detection" method="POST" style="margin-bottom: 10px;">
@@ -2559,7 +2733,6 @@ HTML_TEMPLATE = '''
                                     {% if spike_config.enabled_spread %}🟢 RUNNING{% else %}🔴 STOPPED{% endif %}
                                 </span>
                             </div>
-                            <div class="cooldown-note">⏰ Cooldown: 120s</div>
                         </div>
                         <div class="condition-controls">
                             <form action="/start_spread_detection" method="POST" style="margin-bottom: 10px;">
@@ -2637,19 +2810,14 @@ HTML_TEMPLATE = '''
                         <button type="submit" class="save-btn">💾 SAVE SETTINGS</button>
                     </form>
                 </div>
-                
-                <div style="background: #fff3cd; color: #856404; padding: 15px; border-radius: 10px; margin-top: 20px; text-align: center;">
-                    <strong>Note:</strong> Both conditions check: bid ≥ min premium, then percentage ≥ threshold
-                </div>
             </div>
         </div>
         
-        <!-- Tab 4: Premium Match Detector (System 4) -->
+        <!-- Tab 4: Premium Match Detector -->
         <div id="premium-match-tab" class="tab-content">
             <div class="system-section">
                 <h2 class="section-title">🎯 EXACT PREMIUM MATCH DETECTOR</h2>
                 
-                <!-- Main Control Panel -->
                 <div class="condition-panel system4-panel">
                     <h3>📊 SYSTEM 4 STATUS</h3>
                     
@@ -2659,9 +2827,6 @@ HTML_TEMPLATE = '''
                             <span style="color: {% if system4_active %}#2ecc71{% else %}#e74c3c{% endif %}; font-weight: bold;">
                                 {% if system4_active %}🟢 RUNNING{% else %}🔴 STOPPED{% endif %}
                             </span>
-                        </div>
-                        <div class="cooldown-note">
-                            ⏰ Cooldown: {{ premium_match_config.cooldown_seconds }} seconds
                         </div>
                     </div>
                     
@@ -2679,11 +2844,8 @@ HTML_TEMPLATE = '''
                     </div>
                 </div>
                 
-                <!-- Cooldown Configuration -->
                 <div class="config-section" style="margin-top: 20px;">
                     <h4>⚙️ COOLDOWN CONFIGURATION</h4>
-                    <p style="color: #666; margin-bottom: 15px;">Prevents duplicate alerts for the same premium match</p>
-                    
                     <form action="/update_system4_cooldown" method="POST">
                         <div class="config-row">
                             <label for="cooldown_seconds">Cooldown Duration (seconds):</label>
@@ -2696,20 +2858,13 @@ HTML_TEMPLATE = '''
                                 <button type="button" onclick="incrementCooldown()" class="cooldown-btn">+</button>
                                 <span style="margin-left: 10px;">seconds</span>
                             </div>
-                            <small>⏰ Alerts for the same premium match will not repeat within this time period</small>
                         </div>
-                        
-                        <button type="submit" class="save-btn" style="background: #f39c12; margin-top: 20px;">
-                            💾 UPDATE COOLDOWN
-                        </button>
+                        <button type="submit" class="save-btn" style="background: #f39c12; margin-top: 20px;">💾 UPDATE COOLDOWN</button>
                     </form>
                 </div>
                 
-                <!-- BTC Premium Filter Configuration -->
                 <div class="config-section" style="margin-top: 20px;">
                     <h4>💰 BTC PREMIUM FILTER</h4>
-                    <p style="color: #666; margin-bottom: 15px;">Only trigger BTC alerts when matched premium is above or equal to the filter value</p>
-                    
                     <form action="/update_system4_btc_filter" method="POST">
                         <div class="config-row">
                             <label for="btc_min_premium">BTC Minimum Premium ($):</label>
@@ -2720,22 +2875,14 @@ HTML_TEMPLATE = '''
                                        step="0.5" min="0" max="1000"
                                        class="filter-input">
                                 <button type="button" onclick="incrementBtcFilter()" class="cooldown-btn" style="background: #f39c12;">+</button>
-                                <span style="margin-left: 10px;">dollars ($)</span>
                             </div>
-                            <small>💰 Only alert BTC matches when premium ≥ ${{ "%.2f"|format(premium_match_config.btc_min_premium) }}</small>
                         </div>
-                        
-                        <button type="submit" class="save-btn" style="background: #e67e22; margin-top: 20px;">
-                            💾 UPDATE BTC FILTER
-                        </button>
+                        <button type="submit" class="save-btn" style="background: #e67e22; margin-top: 20px;">💾 UPDATE BTC FILTER</button>
                     </form>
                 </div>
                 
-                <!-- ETH Premium Filter Configuration -->
                 <div class="config-section" style="margin-top: 20px;">
                     <h4>💰 ETH PREMIUM FILTER</h4>
-                    <p style="color: #666; margin-bottom: 15px;">Only trigger ETH alerts when matched premium is above or equal to the filter value</p>
-                    
                     <form action="/update_system4_eth_filter" method="POST">
                         <div class="config-row">
                             <label for="eth_min_premium">ETH Minimum Premium ($):</label>
@@ -2746,49 +2893,115 @@ HTML_TEMPLATE = '''
                                        step="0.5" min="0" max="500"
                                        class="filter-input">
                                 <button type="button" onclick="incrementEthFilter()" class="cooldown-btn" style="background: #f39c12;">+</button>
-                                <span style="margin-left: 10px;">dollars ($)</span>
                             </div>
-                            <small>💰 Only alert ETH matches when premium ≥ ${{ "%.2f"|format(premium_match_config.eth_min_premium) }}</small>
                         </div>
-                        
-                        <button type="submit" class="save-btn" style="background: #e67e22; margin-top: 20px;">
-                            💾 UPDATE ETH FILTER
-                        </button>
+                        <button type="submit" class="save-btn" style="background: #e67e22; margin-top: 20px;">💾 UPDATE ETH FILTER</button>
                     </form>
                 </div>
+            </div>
+        </div>
+        
+        <!-- Tab 5: Premium Tracker (System 5) -->
+        <div id="premium-tracker-tab" class="tab-content">
+            <div class="system-section">
+                <h2 class="section-title">🎯 PREMIUM TRACKER</h2>
+                <p style="margin-bottom: 20px; color: #666;">Monitor ask price changes for specific contracts</p>
                 
-                <!-- Statistics Panel -->
-                <div class="status-panel" style="margin-top: 20px;">
-                    <h3>📈 SYSTEM 4 STATISTICS</h3>
-                    <div class="status-item">
-                        <span class="status-label">Total BTC Matches:</span>
-                        <span class="status-value stat-highlight">{{ system4_btc_match_count }}</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="status-label">Total ETH Matches:</span>
-                        <span class="status-value stat-highlight">{{ system4_eth_match_count }}</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="status-label">Last Alert:</span>
-                        <span class="status-value">
-                            {% if system4_last_alert %}
-                                {{ system4_last_alert }}
+                <div class="tracker-grid">
+                    <!-- BTC CALL -->
+                    <div class="tracker-card btc-call {% if premium_tracker_configs['btc_call'].active %}monitoring{% endif %}">
+                        <h4>🔵 BTC CALL</h4>
+                        <form action="/start_system5_btc_call" method="POST">
+                            <select name="strike" class="select-input" {% if premium_tracker_configs['btc_call'].active %}disabled{% endif %}>
+                                <option value="">Select Strike</option>
+                                {% for strike in btc_bot.option_chain_data.calls.keys()|sort %}
+                                <option value="{{ strike }}" {% if premium_tracker_configs['btc_call'].strike == strike %}selected{% endif %}>
+                                    {{ strike }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            {% if premium_tracker_configs['btc_call'].active %}
+                            <p>Last Ask: ${{ "%.2f"|format(premium_tracker_configs['btc_call'].last_ask_price) }}</p>
+                            <p class="tracker-status status-active">🟢 MONITORING</p>
+                            <button type="button" class="stop-btn" onclick="location.href='/stop_system5_btc_call'" style="width:100%;">⏸️ STOP</button>
                             {% else %}
-                                Never
+                            <p>Last Ask: --</p>
+                            <p class="tracker-status status-inactive">🔴 INACTIVE</p>
+                            <button type="submit" class="start-btn" style="width:100%;">▶️ START</button>
                             {% endif %}
-                        </span>
+                        </form>
                     </div>
-                    <div class="status-item">
-                        <span class="status-label">Active Since:</span>
-                        <span class="status-value">
-                            {% if system4_active and system4_start_time %}
-                                {{ system4_start_time }}
-                            {% elif system4_active %}
-                                Currently running
+                    
+                    <!-- BTC PUT -->
+                    <div class="tracker-card btc-put {% if premium_tracker_configs['btc_put'].active %}monitoring{% endif %}">
+                        <h4>🔴 BTC PUT</h4>
+                        <form action="/start_system5_btc_put" method="POST">
+                            <select name="strike" class="select-input" {% if premium_tracker_configs['btc_put'].active %}disabled{% endif %}>
+                                <option value="">Select Strike</option>
+                                {% for strike in btc_bot.option_chain_data.puts.keys()|sort %}
+                                <option value="{{ strike }}" {% if premium_tracker_configs['btc_put'].strike == strike %}selected{% endif %}>
+                                    {{ strike }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            {% if premium_tracker_configs['btc_put'].active %}
+                            <p>Last Ask: ${{ "%.2f"|format(premium_tracker_configs['btc_put'].last_ask_price) }}</p>
+                            <p class="tracker-status status-active">🟢 MONITORING</p>
+                            <button type="button" class="stop-btn" onclick="location.href='/stop_system5_btc_put'" style="width:100%;">⏸️ STOP</button>
                             {% else %}
-                                Not running
+                            <p>Last Ask: --</p>
+                            <p class="tracker-status status-inactive">🔴 INACTIVE</p>
+                            <button type="submit" class="start-btn" style="width:100%;">▶️ START</button>
                             {% endif %}
-                        </span>
+                        </form>
+                    </div>
+                    
+                    <!-- ETH CALL -->
+                    <div class="tracker-card eth-call {% if premium_tracker_configs['eth_call'].active %}monitoring{% endif %}">
+                        <h4>🟢 ETH CALL</h4>
+                        <form action="/start_system5_eth_call" method="POST">
+                            <select name="strike" class="select-input" {% if premium_tracker_configs['eth_call'].active %}disabled{% endif %}>
+                                <option value="">Select Strike</option>
+                                {% for strike in eth_bot.option_chain_data.calls.keys()|sort %}
+                                <option value="{{ strike }}" {% if premium_tracker_configs['eth_call'].strike == strike %}selected{% endif %}>
+                                    {{ strike }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            {% if premium_tracker_configs['eth_call'].active %}
+                            <p>Last Ask: ${{ "%.2f"|format(premium_tracker_configs['eth_call'].last_ask_price) }}</p>
+                            <p class="tracker-status status-active">🟢 MONITORING</p>
+                            <button type="button" class="stop-btn" onclick="location.href='/stop_system5_eth_call'" style="width:100%;">⏸️ STOP</button>
+                            {% else %}
+                            <p>Last Ask: --</p>
+                            <p class="tracker-status status-inactive">🔴 INACTIVE</p>
+                            <button type="submit" class="start-btn" style="width:100%;">▶️ START</button>
+                            {% endif %}
+                        </form>
+                    </div>
+                    
+                    <!-- ETH PUT -->
+                    <div class="tracker-card eth-put {% if premium_tracker_configs['eth_put'].active %}monitoring{% endif %}">
+                        <h4>🟣 ETH PUT</h4>
+                        <form action="/start_system5_eth_put" method="POST">
+                            <select name="strike" class="select-input" {% if premium_tracker_configs['eth_put'].active %}disabled{% endif %}>
+                                <option value="">Select Strike</option>
+                                {% for strike in eth_bot.option_chain_data.puts.keys()|sort %}
+                                <option value="{{ strike }}" {% if premium_tracker_configs['eth_put'].strike == strike %}selected{% endif %}>
+                                    {{ strike }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            {% if premium_tracker_configs['eth_put'].active %}
+                            <p>Last Ask: ${{ "%.2f"|format(premium_tracker_configs['eth_put'].last_ask_price) }}</p>
+                            <p class="tracker-status status-active">🟢 MONITORING</p>
+                            <button type="button" class="stop-btn" onclick="location.href='/stop_system5_eth_put'" style="width:100%;">⏸️ STOP</button>
+                            {% else %}
+                            <p>Last Ask: --</p>
+                            <p class="tracker-status status-inactive">🔴 INACTIVE</p>
+                            <button type="submit" class="start-btn" style="width:100%;">▶️ START</button>
+                            {% endif %}
+                        </form>
                     </div>
                 </div>
             </div>
@@ -2884,6 +3097,7 @@ def home():
                                  alert_configs=alert_configs,
                                  spike_config=spike_config,
                                  premium_match_config=premium_match_config,
+                                 premium_tracker_configs=premium_tracker_configs,
                                  DELTA_THRESHOLD=DELTA_THRESHOLD,
                                  new_system_active=new_system_active,
                                  system4_active=system4_active,
@@ -2970,10 +3184,8 @@ def activate_alerts():
         if new_system_active:
             active_count = sum(1 for config in alert_configs.values() if config.is_monitoring)
             send_telegram(f"🚀 OPTION ALERT SYSTEM ACTIVATED!\n\n📊 Active alerts: {active_count}/4\n⏰ Time: {get_ist_time()}\n\nSystem is now monitoring configured alerts!")
-            print(f"[{datetime.now()}] ✅ Option alert system activated with {active_count} alerts")
         else:
             send_telegram(f"⏸️ OPTION ALERT SYSTEM DEACTIVATED\n\n⏰ Time: {get_ist_time()}\n\nNo alerts are currently monitored.")
-            print(f"[{datetime.now()}] ⏸️ Option alert system deactivated")
         
         return redirect('/?success=Alert+system+activated+successfully!')
         
@@ -2988,20 +3200,11 @@ def update_eth_threshold():
         if new_threshold <= 0:
             return "Threshold must be positive", 400
         
-        old_threshold = DELTA_THRESHOLD['ETH']
         DELTA_THRESHOLD['ETH'] = new_threshold
-        
-        current_time_str = get_ist_time()
-        send_telegram(f"⚙️ ETH Arbitrage Threshold Updated\n\n📊 New Value: ${new_threshold:.2f}\n⏰ Time: {current_time_str}\n\nThreshold changed successfully!")
-        
-        print(f"[{datetime.now()}] ✅ ETH threshold updated: ${old_threshold:.2f} → ${new_threshold:.2f}")
-        
+        send_telegram(f"⚙️ ETH Arbitrage Threshold Updated\n\n📊 New Value: ${new_threshold:.2f}\n⏰ Time: {get_ist_time()}")
         return redirect('/?success=ETH+threshold+updated+successfully!')
     except ValueError:
         return "Invalid threshold value", 400
-    except Exception as e:
-        print(f"[{datetime.now()}] ❌ Error updating ETH threshold: {e}")
-        return "Error updating threshold", 500
 
 @app.route('/update_btc_threshold', methods=['POST'])
 def update_btc_threshold():
@@ -3010,20 +3213,11 @@ def update_btc_threshold():
         if new_threshold <= 0:
             return "Threshold must be positive", 400
         
-        old_threshold = DELTA_THRESHOLD['BTC']
         DELTA_THRESHOLD['BTC'] = new_threshold
-        
-        current_time_str = get_ist_time()
-        send_telegram(f"⚙️ BTC Arbitrage Threshold Updated\n\n📊 New Value: ${new_threshold:.2f}\n⏰ Time: {current_time_str}\n\nThreshold changed successfully!")
-        
-        print(f"[{datetime.now()}] ✅ BTC threshold updated: ${old_threshold:.2f} → ${new_threshold:.2f}")
-        
+        send_telegram(f"⚙️ BTC Arbitrage Threshold Updated\n\n📊 New Value: ${new_threshold:.2f}\n⏰ Time: {get_ist_time()}")
         return redirect('/?success=BTC+threshold+updated+successfully!')
     except ValueError:
         return "Invalid threshold value", 400
-    except Exception as e:
-        print(f"[{datetime.now()}] ❌ Error updating BTC threshold: {e}")
-        return "Error updating threshold", 500
 
 @app.route('/start_spike_detection', methods=['POST'])
 def start_spike_detection():
@@ -3031,8 +3225,7 @@ def start_spike_detection():
     
     if not spike_config.enabled_spike:
         spike_config.enabled_spike = True
-        send_telegram(f"🚨 PRICE SPIKE DETECTION STARTED!\n\n⚡ Minimum Spike: {spike_config.min_spike_percent}%\n💰 Minimum Premium: ${spike_config.spike_min_premium:.2f}\n⏰ Cooldown: 120 seconds\n⏰ Time: {get_ist_time()}\n\nPrice spike detection is now active!")
-        print(f"[{datetime.now()}] ✅ Price spike detection started")
+        send_telegram(f"🚨 PRICE SPIKE DETECTION STARTED!\n\n⚡ Minimum Spike: {spike_config.min_spike_percent}%\n💰 Minimum Premium: ${spike_config.spike_min_premium:.2f}\n⏰ Time: {get_ist_time()}")
     
     return redirect('/?success=Spike+detection+started!')
 
@@ -3042,8 +3235,7 @@ def stop_spike_detection():
     
     if spike_config.enabled_spike:
         spike_config.enabled_spike = False
-        send_telegram(f"⏸️ PRICE SPIKE DETECTION STOPPED\n\n⏰ Time: {get_ist_time()}\n\nPrice spike detection paused.")
-        print(f"[{datetime.now()}] ⏸️ Price spike detection stopped")
+        send_telegram(f"⏸️ PRICE SPIKE DETECTION STOPPED\n\n⏰ Time: {get_ist_time()}")
     
     return redirect('/?success=Spike+detection+stopped!')
 
@@ -3053,8 +3245,7 @@ def start_spread_detection():
     
     if not spike_config.enabled_spread:
         spike_config.enabled_spread = True
-        send_telegram(f"🚨 BID-ASK SPREAD DETECTION STARTED!\n\n⚡ Minimum Spread: {spike_config.min_spread_percent}%\n💰 Minimum Premium: ${spike_config.spread_min_premium:.2f}\n⏰ Cooldown: 120 seconds\n⏰ Time: {get_ist_time()}\n\nBid-ask spread detection is now active!")
-        print(f"[{datetime.now()}] ✅ Bid-ask spread detection started")
+        send_telegram(f"🚨 BID-ASK SPREAD DETECTION STARTED!\n\n⚡ Minimum Spread: {spike_config.min_spread_percent}%\n💰 Minimum Premium: ${spike_config.spread_min_premium:.2f}\n⏰ Time: {get_ist_time()}")
     
     return redirect('/?success=Spread+detection+started!')
 
@@ -3064,8 +3255,7 @@ def stop_spread_detection():
     
     if spike_config.enabled_spread:
         spike_config.enabled_spread = False
-        send_telegram(f"⏸️ BID-ASK SPREAD DETECTION STOPPED\n\n⏰ Time: {get_ist_time()}\n\nBid-ask spread detection paused.")
-        print(f"[{datetime.now()}] ⏸️ Bid-ask spread detection stopped")
+        send_telegram(f"⏸️ BID-ASK SPREAD DETECTION STOPPED\n\n⏰ Time: {get_ist_time()}")
     
     return redirect('/?success=Spread+detection+stopped!')
 
@@ -3083,15 +3273,7 @@ def update_spike_config():
         spike_config.monitor_calls = 'monitor_calls' in request.form
         spike_config.monitor_puts = 'monitor_puts' in request.form
         
-        current_time_str = get_ist_time()
-        eth_status = "✅" if spike_config.monitor_eth else "❌"
-        btc_status = "✅" if spike_config.monitor_btc else "❌"
-        calls_status = "✅" if spike_config.monitor_calls else "❌"
-        puts_status = "✅" if spike_config.monitor_puts else "❌"
-        
-        send_telegram(f"⚙️ DUAL CONDITION CONFIG UPDATED\n\n📊 Condition 1 (Price Spike): {spike_config.min_spike_percent}%\n💰 Min Premium: ${spike_config.spike_min_premium:.2f}\n📊 Condition 2 (Bid-Ask Spread): {spike_config.min_spread_percent}%\n💰 Min Premium: ${spike_config.spread_min_premium:.2f}\n⏰ Cooldown: 120 seconds (2 minutes)\n\n📡 Assets:\n{eth_status} ETH | {btc_status} BTC\n{calls_status} Calls | {puts_status} Puts\n\n⏰ Time: {current_time_str}")
-        
-        print(f"[{datetime.now()}] ✅ Dual condition config updated")
+        send_telegram(f"⚙️ DUAL CONDITION CONFIG UPDATED\n\n📊 Spike: {spike_config.min_spike_percent}%\n💰 Min Premium: ${spike_config.spike_min_premium:.2f}\n📊 Spread: {spike_config.min_spread_percent}%\n💰 Min Premium: ${spike_config.spread_min_premium:.2f}\n⏰ Time: {get_ist_time()}")
         
         return redirect('/?success=Spike+detector+configuration+updated!')
         
@@ -3099,9 +3281,7 @@ def update_spike_config():
         print(f"[{datetime.now()}] ❌ Error updating spike config: {e}")
         return redirect('/?success=Error+updating+configuration')
 
-# -------------------------------
 # System 4 Routes
-# -------------------------------
 @app.route('/start_system4', methods=['POST'])
 def start_system4():
     global system4_active, system4_start_time, premium_match_config
@@ -3110,8 +3290,7 @@ def start_system4():
         system4_active = True
         premium_match_config.enabled = True
         system4_start_time = get_ist_time()
-        send_telegram(f"🎯 SYSTEM 4: EXACT PREMIUM MATCH DETECTION STARTED!\n\n⚡ Cooldown: {premium_match_config.cooldown_seconds} seconds\n💰 BTC Filter: ≥ ${premium_match_config.btc_min_premium:.2f}\n💰 ETH Filter: ≥ ${premium_match_config.eth_min_premium:.2f}\n⏰ Time: {get_ist_time()}\n\nDetecting when ASK of one strike exactly equals BID of another strike!")
-        print(f"[{datetime.now()}] ✅ System 4: Premium match detection started")
+        send_telegram(f"🎯 SYSTEM 4: EXACT PREMIUM MATCH DETECTION STARTED!\n\n⚡ Cooldown: {premium_match_config.cooldown_seconds}s\n💰 BTC Filter: ≥ ${premium_match_config.btc_min_premium:.2f}\n💰 ETH Filter: ≥ ${premium_match_config.eth_min_premium:.2f}\n⏰ Time: {get_ist_time()}")
     
     return redirect('/?success=System+4+started!')
 
@@ -3122,8 +3301,7 @@ def stop_system4():
     if system4_active:
         system4_active = False
         premium_match_config.enabled = False
-        send_telegram(f"⏸️ SYSTEM 4: EXACT PREMIUM MATCH DETECTION STOPPED\n\n⏰ Time: {get_ist_time()}\n\nPremium match detection paused.")
-        print(f"[{datetime.now()}] ⏸️ System 4: Premium match detection stopped")
+        send_telegram(f"⏸️ SYSTEM 4: EXACT PREMIUM MATCH DETECTION STOPPED\n\n⏰ Time: {get_ist_time()}")
     
     return redirect('/?success=System+4+stopped!')
 
@@ -3141,11 +3319,7 @@ def update_system4_cooldown():
             new_cooldown = 300
             
         premium_match_config.cooldown_seconds = new_cooldown
-        
-        current_time_str = get_ist_time()
-        send_telegram(f"⚙️ SYSTEM 4 COOLDOWN UPDATED\n\n⏰ Old Cooldown: {old_cooldown} seconds\n⏰ New Cooldown: {new_cooldown} seconds\n\nAlerts will not repeat for {new_cooldown} seconds\n⏰ Time: {current_time_str}")
-        
-        print(f"[{datetime.now()}] ✅ System 4 cooldown updated: {old_cooldown}s → {new_cooldown}s")
+        send_telegram(f"⚙️ SYSTEM 4 COOLDOWN UPDATED\n\n⏰ {old_cooldown}s → {new_cooldown}s\n⏰ Time: {get_ist_time()}")
         
         return redirect('/?success=System+4+cooldown+updated+successfully!')
         
@@ -3167,11 +3341,7 @@ def update_system4_btc_filter():
             new_filter = 1000
             
         premium_match_config.btc_min_premium = new_filter
-        
-        current_time_str = get_ist_time()
-        send_telegram(f"💰 SYSTEM 4 BTC PREMIUM FILTER UPDATED\n\n📊 Old Filter: ≥ ${old_filter:.2f}\n📊 New Filter: ≥ ${new_filter:.2f}\n\nOnly BTC matches with premium ≥ ${new_filter:.2f} will trigger alerts\n⏰ Time: {current_time_str}")
-        
-        print(f"[{datetime.now()}] ✅ System 4 BTC filter updated: ≥${old_filter:.2f} → ≥${new_filter:.2f}")
+        send_telegram(f"💰 SYSTEM 4 BTC FILTER UPDATED\n\n📊 ≥ ${old_filter:.2f} → ≥ ${new_filter:.2f}\n⏰ Time: {get_ist_time()}")
         
         return redirect('/?success=BTC+filter+updated+successfully!')
         
@@ -3193,17 +3363,174 @@ def update_system4_eth_filter():
             new_filter = 500
             
         premium_match_config.eth_min_premium = new_filter
-        
-        current_time_str = get_ist_time()
-        send_telegram(f"💰 SYSTEM 4 ETH PREMIUM FILTER UPDATED\n\n📊 Old Filter: ≥ ${old_filter:.2f}\n📊 New Filter: ≥ ${new_filter:.2f}\n\nOnly ETH matches with premium ≥ ${new_filter:.2f} will trigger alerts\n⏰ Time: {current_time_str}")
-        
-        print(f"[{datetime.now()}] ✅ System 4 ETH filter updated: ≥${old_filter:.2f} → ≥${new_filter:.2f}")
+        send_telegram(f"💰 SYSTEM 4 ETH FILTER UPDATED\n\n📊 ≥ ${old_filter:.2f} → ≥ ${new_filter:.2f}\n⏰ Time: {get_ist_time()}")
         
         return redirect('/?success=ETH+filter+updated+successfully!')
         
     except Exception as e:
         print(f"[{datetime.now()}] ❌ Error updating System 4 ETH filter: {e}")
         return redirect('/?success=Error+updating+ETH+filter')
+
+# System 5 Routes
+@app.route('/start_system5_btc_call', methods=['POST'])
+def start_system5_btc_call():
+    global premium_tracker_configs
+    
+    try:
+        strike_str = request.form.get('strike', '')
+        if not strike_str:
+            return redirect('/?success=Please+select+a+strike')
+        
+        strike = float(strike_str)
+        
+        config = premium_tracker_configs['btc_call']
+        config.active = True
+        config.strike = strike
+        config.last_alert_time = 0
+        
+        symbol = get_btc_symbol(btc_bot, strike, 'call')
+        if symbol and symbol in btc_bot.options_prices:
+            config.last_ask_price = btc_bot.options_prices[symbol]['ask']
+        
+        send_telegram(f"🔔 SYSTEM 5: BTC {strike} CALL TRACKING STARTED\n\n💰 Initial Ask: ${config.last_ask_price:.2f}\n⏰ Time: {get_ist_time()}")
+        
+        return redirect('/?success=BTC+CALL+tracking+started!')
+        
+    except Exception as e:
+        print(f"[{datetime.now()}] ❌ Error starting System 5 BTC CALL: {e}")
+        return redirect('/?success=Error+starting+tracker')
+
+@app.route('/stop_system5_btc_call')
+def stop_system5_btc_call():
+    global premium_tracker_configs
+    
+    config = premium_tracker_configs['btc_call']
+    config.active = False
+    config.last_ask_price = 0.0
+    
+    send_telegram(f"⏸️ SYSTEM 5: BTC CALL TRACKING STOPPED\n\n⏰ Time: {get_ist_time()}")
+    
+    return redirect('/?success=BTC+CALL+tracking+stopped!')
+
+@app.route('/start_system5_btc_put', methods=['POST'])
+def start_system5_btc_put():
+    global premium_tracker_configs
+    
+    try:
+        strike_str = request.form.get('strike', '')
+        if not strike_str:
+            return redirect('/?success=Please+select+a+strike')
+        
+        strike = float(strike_str)
+        
+        config = premium_tracker_configs['btc_put']
+        config.active = True
+        config.strike = strike
+        config.last_alert_time = 0
+        
+        symbol = get_btc_symbol(btc_bot, strike, 'put')
+        if symbol and symbol in btc_bot.options_prices:
+            config.last_ask_price = btc_bot.options_prices[symbol]['ask']
+        
+        send_telegram(f"🔔 SYSTEM 5: BTC {strike} PUT TRACKING STARTED\n\n💰 Initial Ask: ${config.last_ask_price:.2f}\n⏰ Time: {get_ist_time()}")
+        
+        return redirect('/?success=BTC+PUT+tracking+started!')
+        
+    except Exception as e:
+        print(f"[{datetime.now()}] ❌ Error starting System 5 BTC PUT: {e}")
+        return redirect('/?success=Error+starting+tracker')
+
+@app.route('/stop_system5_btc_put')
+def stop_system5_btc_put():
+    global premium_tracker_configs
+    
+    config = premium_tracker_configs['btc_put']
+    config.active = False
+    config.last_ask_price = 0.0
+    
+    send_telegram(f"⏸️ SYSTEM 5: BTC PUT TRACKING STOPPED\n\n⏰ Time: {get_ist_time()}")
+    
+    return redirect('/?success=BTC+PUT+tracking+stopped!')
+
+@app.route('/start_system5_eth_call', methods=['POST'])
+def start_system5_eth_call():
+    global premium_tracker_configs
+    
+    try:
+        strike_str = request.form.get('strike', '')
+        if not strike_str:
+            return redirect('/?success=Please+select+a+strike')
+        
+        strike = float(strike_str)
+        
+        config = premium_tracker_configs['eth_call']
+        config.active = True
+        config.strike = strike
+        config.last_alert_time = 0
+        
+        symbol = get_eth_symbol(eth_bot, strike, 'call')
+        if symbol and symbol in eth_bot.options_prices:
+            config.last_ask_price = eth_bot.options_prices[symbol]['ask']
+        
+        send_telegram(f"🔔 SYSTEM 5: ETH {strike} CALL TRACKING STARTED\n\n💰 Initial Ask: ${config.last_ask_price:.2f}\n⏰ Time: {get_ist_time()}")
+        
+        return redirect('/?success=ETH+CALL+tracking+started!')
+        
+    except Exception as e:
+        print(f"[{datetime.now()}] ❌ Error starting System 5 ETH CALL: {e}")
+        return redirect('/?success=Error+starting+tracker')
+
+@app.route('/stop_system5_eth_call')
+def stop_system5_eth_call():
+    global premium_tracker_configs
+    
+    config = premium_tracker_configs['eth_call']
+    config.active = False
+    config.last_ask_price = 0.0
+    
+    send_telegram(f"⏸️ SYSTEM 5: ETH CALL TRACKING STOPPED\n\n⏰ Time: {get_ist_time()}")
+    
+    return redirect('/?success=ETH+CALL+tracking+stopped!')
+
+@app.route('/start_system5_eth_put', methods=['POST'])
+def start_system5_eth_put():
+    global premium_tracker_configs
+    
+    try:
+        strike_str = request.form.get('strike', '')
+        if not strike_str:
+            return redirect('/?success=Please+select+a+strike')
+        
+        strike = float(strike_str)
+        
+        config = premium_tracker_configs['eth_put']
+        config.active = True
+        config.strike = strike
+        config.last_alert_time = 0
+        
+        symbol = get_eth_symbol(eth_bot, strike, 'put')
+        if symbol and symbol in eth_bot.options_prices:
+            config.last_ask_price = eth_bot.options_prices[symbol]['ask']
+        
+        send_telegram(f"🔔 SYSTEM 5: ETH {strike} PUT TRACKING STARTED\n\n💰 Initial Ask: ${config.last_ask_price:.2f}\n⏰ Time: {get_ist_time()}")
+        
+        return redirect('/?success=ETH+PUT+tracking+started!')
+        
+    except Exception as e:
+        print(f"[{datetime.now()}] ❌ Error starting System 5 ETH PUT: {e}")
+        return redirect('/?success=Error+starting+tracker')
+
+@app.route('/stop_system5_eth_put')
+def stop_system5_eth_put():
+    global premium_tracker_configs
+    
+    config = premium_tracker_configs['eth_put']
+    config.active = False
+    config.last_ask_price = 0.0
+    
+    send_telegram(f"⏸️ SYSTEM 5: ETH PUT TRACKING STOPPED\n\n⏰ Time: {get_ist_time()}")
+    
+    return redirect('/?success=ETH+PUT+tracking+stopped!')
 
 @app.route('/health')
 def health():
@@ -3245,27 +3572,18 @@ def health():
                 "active": spike_config.enabled_spread,
                 "min_spread_percent": spike_config.min_spread_percent,
                 "min_premium": spike_config.spread_min_premium
-            },
-            "asset_filtering": {
-                "monitor_eth": spike_config.monitor_eth,
-                "monitor_btc": spike_config.monitor_btc,
-                "monitor_calls": spike_config.monitor_calls,
-                "monitor_puts": spike_config.monitor_puts
-            },
-            "cooldown": "120 seconds (2 minutes)"
+            }
         },
         "system_4_premium_match": {
             "active": system4_active,
             "cooldown_seconds": premium_match_config.cooldown_seconds,
             "btc_min_premium": premium_match_config.btc_min_premium,
-            "eth_min_premium": premium_match_config.eth_min_premium,
-            "total_btc_matches": system4_btc_match_count,
-            "total_eth_matches": system4_eth_match_count,
-            "last_alert": system4_last_alert,
-            "start_time": system4_start_time
+            "eth_min_premium": premium_match_config.eth_min_premium
         },
-        "current_time": current_time_str,
-        "expiry_display": format_expiry_display(eth_bot.active_expiry)
+        "system_5_premium_tracker": {
+            config_id: asdict(config) for config_id, config in premium_tracker_configs.items()
+        },
+        "current_time": current_time_str
     }, 200
 
 @app.route('/start_btc')
@@ -3290,27 +3608,16 @@ def ping():
 # -------------------------------
 def start_bots():
     print("="*60)
-    print("QUAD ALERT SYSTEM")
+    print("QUAD ALERT SYSTEM WITH PREMIUM TRACKER")
     print("="*60)
     print(f"⚡ System 1: Arbitrage Alerts")
     print(f"   • ETH Threshold: ${DELTA_THRESHOLD['ETH']:.2f}")
     print(f"   • BTC Threshold: ${DELTA_THRESHOLD['BTC']:.2f}")
     print(f"🎯 System 2: Option Strike Alerts")
-    print(f"   • 4 independent sections")
-    print(f"   • Fixed call/put separation")
     print(f"🚨 System 3: Dual Condition Spike Detection")
-    print(f"   • Condition 1: Price spike ≥ {spike_config.min_spike_percent}%")
-    print(f"   • Condition 1 Premium Filter: ≥ ${spike_config.spike_min_premium:.2f}")
-    print(f"   • Condition 2: Bid-ask spread ≥ {spike_config.min_spread_percent}%")
-    print(f"   • Condition 2 Premium Filter: ≥ ${spike_config.spread_min_premium:.2f}")
-    print(f"   • Cooldown: 120 seconds (2 minutes) fixed")
     print(f"🎯 System 4: Exact Premium Match Detection")
-    print(f"   • Cooldown: {premium_match_config.cooldown_seconds} seconds (configurable)")
-    print(f"   • BTC Premium Filter: ≥ ${premium_match_config.btc_min_premium:.2f}")
-    print(f"   • ETH Premium Filter: ≥ ${premium_match_config.eth_min_premium:.2f}")
-    print(f"   • Detects: ASK of one strike = BID of another strike")
+    print(f"🔔 System 5: Premium Tracker (120s cooldown)")
     print(f"📅 Current expiry: {get_current_expiry()}")
-    print(f"🔄 Auto-expiry at 5:30 PM IST")
     print("="*60)
     
     eth_bot.start()
@@ -3318,7 +3625,7 @@ def start_bots():
     btc_thread = threading.Thread(target=btc_bot.start_monitoring, daemon=True)
     btc_thread.start()
     
-    print(f"[{datetime.now()}] ✅ All four systems started")
+    print(f"[{datetime.now()}] ✅ All five systems started")
 
 if __name__ == "__main__":
     start_bots()
