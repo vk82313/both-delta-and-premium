@@ -2343,9 +2343,9 @@ def health():
             "eth_min_premium": premium_match_config.eth_min_premium
         },
         "system_5_premium_tracker": {
-            "immediate_alerts": "YES - NO COOLDOWN DELAY",
-            config_id: asdict(config) for config_id, config in premium_tracker_configs.items()
-        },
+    "immediate_alerts": "YES - NO COOLDOWN DELAY",
+    **{config_id: asdict(config) for config_id, config in premium_tracker_configs.items()}
+},
         "current_time": current_time_str
     }, 200
 
