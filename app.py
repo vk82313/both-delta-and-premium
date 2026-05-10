@@ -19,8 +19,8 @@ app = Flask(__name__)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Global thresholds for arbitrage system
-DELTA_THRESHOLD = {"ETH": 0.16, "BTC": 2}
+# Global thresholds for arbitrage system - UPDATED DEFAULT VALUES
+DELTA_THRESHOLD = {"ETH": 0.05, "BTC": 0.5}  # Changed: ETH 0.16→0.05, BTC 2→0.5
 ALERT_COOLDOWN = 60
 PROCESS_INTERVAL = 2
 EXPIRY_CHECK_INTERVAL = 60
@@ -104,25 +104,22 @@ system4_last_alert = None
 system4_start_time = None
 
 # -------------------------------
-# System 5: Premium Tracker Configuration
+# System 5: Premium Tracker Configuration (REMOVED COOLDOWN)
 # -------------------------------
 @dataclass
 class PremiumTrackerConfig:
     active: bool = False
     strike: float = 0
     last_ask_price: float = 0.0
-    last_alert_time: float = 0.0
+    # REMOVED: last_alert_time - no cooldown, immediate alerts
 
-# System 5 data storage
+# System 5 data storage - NO COOLDOWN
 premium_tracker_configs = {
     'btc_call': PremiumTrackerConfig(),
     'btc_put': PremiumTrackerConfig(),
     'eth_call': PremiumTrackerConfig(),
     'eth_put': PremiumTrackerConfig()
 }
-
-# System 5 cooldown (120 seconds)
-SYSTEM5_COOLDOWN = 120
 
 # System 5 alert counters
 system5_alert_counts = {
@@ -298,7 +295,7 @@ def send_spread_alert_telegram(symbol: str, bid_price: float, ask_price: float, 
     print(f"[{datetime.now()}] 🚨 Condition 2: Spread alert sent for {symbol}: Bid ${bid_price:.2f}, Ask ${ask_price:.2f}, Spread {spread_percent:.1f}%")
 
 def send_system5_alert_telegram(asset: str, option_type: str, strike: float, old_ask: float, new_ask: float):
-    """Send Telegram message for System 5: Premium change"""
+    """Send Telegram message for System 5: Premium change - IMMEDIATE, NO DELAY"""
     change = new_ask - old_ask
     change_percent = (change / old_ask) * 100 if old_ask > 0 else 0
     
@@ -312,10 +309,12 @@ def send_system5_alert_telegram(asset: str, option_type: str, strike: float, old
 💰 Ask Price: ${old_ask:.2f} → ${new_ask:.2f}
 {direction} Change: {sign}${change:.2f} ({sign}{change_percent:.2f}%)
 ⏰ Time: {get_ist_time()}
+
+⚡ **Alert: Immediate change detected!**
 """
     
     send_telegram(message)
-    print(f"[{datetime.now()}] 🔔 System 5: {asset} {strike} {option_type} ASK changed: ${old_ask:.2f} → ${new_ask:.2f}")
+    print(f"[{datetime.now()}] 🔔 System 5 (IMMEDIATE): {asset} {strike} {option_type} ASK changed: ${old_ask:.2f} → ${new_ask:.2f}")
 
 # -------------------------------
 # System 4: Premium Match Functions
@@ -536,7 +535,7 @@ def check_premium_matches_btc(btc_bot):
                                                    premium_match_config.eth_min_premium)
 
 # -------------------------------
-# System 5: Premium Tracker Functions
+# System 5: Premium Tracker Functions - NO COOLDOWN, IMMEDIATE ALERTS
 # -------------------------------
 def get_eth_symbol(eth_bot, strike: float, option_type: str) -> Optional[str]:
     """Get the symbol for a specific ETH strike and type"""
@@ -563,71 +562,70 @@ def get_btc_symbol(btc_bot, strike: float, option_type: str) -> Optional[str]:
     return None
 
 def check_system5_eth(eth_bot):
-    """System 5: Check for ASK price changes in ETH options"""
+    """System 5: Check for ASK price changes in ETH options - IMMEDIATE ALERTS (NO COOLDOWN)"""
     global premium_tracker_configs, system5_alert_counts
     
-    # Check ETH CALL
+    # Check ETH CALL - NO DELAY
     config = premium_tracker_configs['eth_call']
     if config.active and config.strike > 0:
         symbol = get_eth_symbol(eth_bot, config.strike, 'call')
         if symbol and symbol in eth_bot.options_prices:
             current_ask = eth_bot.options_prices[symbol]['ask']
-            if current_ask > 0 and config.last_ask_price > 0 and current_ask != config.last_ask_price:
-                now = datetime.now().timestamp()
-                if now - config.last_alert_time >= SYSTEM5_COOLDOWN:
-                    send_system5_alert_telegram('ETH', 'call', config.strike, config.last_ask_price, current_ask)
-                    config.last_alert_time = now
-                    system5_alert_counts['eth_call'] += 1
             if current_ask > 0:
+                # Check if price changed (any change, even within same second)
+                if config.last_ask_price > 0 and current_ask != config.last_ask_price:
+                    # IMMEDIATE ALERT - NO COOLDOWN CHECK
+                    send_system5_alert_telegram('ETH', 'call', config.strike, config.last_ask_price, current_ask)
+                    system5_alert_counts['eth_call'] += 1
+                    print(f"[{datetime.now()}] ⚡ IMMEDIATE System 5 ETH CALL alert - change detected instantly")
+                
+                # Always update last price
                 config.last_ask_price = current_ask
     
-    # Check ETH PUT
+    # Check ETH PUT - NO DELAY
     config = premium_tracker_configs['eth_put']
     if config.active and config.strike > 0:
         symbol = get_eth_symbol(eth_bot, config.strike, 'put')
         if symbol and symbol in eth_bot.options_prices:
             current_ask = eth_bot.options_prices[symbol]['ask']
-            if current_ask > 0 and config.last_ask_price > 0 and current_ask != config.last_ask_price:
-                now = datetime.now().timestamp()
-                if now - config.last_alert_time >= SYSTEM5_COOLDOWN:
-                    send_system5_alert_telegram('ETH', 'put', config.strike, config.last_ask_price, current_ask)
-                    config.last_alert_time = now
-                    system5_alert_counts['eth_put'] += 1
             if current_ask > 0:
+                if config.last_ask_price > 0 and current_ask != config.last_ask_price:
+                    send_system5_alert_telegram('ETH', 'put', config.strike, config.last_ask_price, current_ask)
+                    system5_alert_counts['eth_put'] += 1
+                    print(f"[{datetime.now()}] ⚡ IMMEDIATE System 5 ETH PUT alert - change detected instantly")
+                
                 config.last_ask_price = current_ask
 
 def check_system5_btc(btc_bot):
-    """System 5: Check for ASK price changes in BTC options"""
+    """System 5: Check for ASK price changes in BTC options - IMMEDIATE ALERTS (NO COOLDOWN)"""
     global premium_tracker_configs, system5_alert_counts
     
-    # Check BTC CALL
+    # Check BTC CALL - NO DELAY
     config = premium_tracker_configs['btc_call']
     if config.active and config.strike > 0:
         symbol = get_btc_symbol(btc_bot, config.strike, 'call')
         if symbol and symbol in btc_bot.options_prices:
             current_ask = btc_bot.options_prices[symbol]['ask']
-            if current_ask > 0 and config.last_ask_price > 0 and current_ask != config.last_ask_price:
-                now = datetime.now().timestamp()
-                if now - config.last_alert_time >= SYSTEM5_COOLDOWN:
-                    send_system5_alert_telegram('BTC', 'call', config.strike, config.last_ask_price, current_ask)
-                    config.last_alert_time = now
-                    system5_alert_counts['btc_call'] += 1
             if current_ask > 0:
+                if config.last_ask_price > 0 and current_ask != config.last_ask_price:
+                    send_system5_alert_telegram('BTC', 'call', config.strike, config.last_ask_price, current_ask)
+                    system5_alert_counts['btc_call'] += 1
+                    print(f"[{datetime.now()}] ⚡ IMMEDIATE System 5 BTC CALL alert - change detected instantly")
+                
                 config.last_ask_price = current_ask
     
-    # Check BTC PUT
+    # Check BTC PUT - NO DELAY
     config = premium_tracker_configs['btc_put']
     if config.active and config.strike > 0:
         symbol = get_btc_symbol(btc_bot, config.strike, 'put')
         if symbol and symbol in btc_bot.options_prices:
             current_ask = btc_bot.options_prices[symbol]['ask']
-            if current_ask > 0 and config.last_ask_price > 0 and current_ask != config.last_ask_price:
-                now = datetime.now().timestamp()
-                if now - config.last_alert_time >= SYSTEM5_COOLDOWN:
-                    send_system5_alert_telegram('BTC', 'put', config.strike, config.last_ask_price, current_ask)
-                    config.last_alert_time = now
-                    system5_alert_counts['btc_put'] += 1
             if current_ask > 0:
+                if config.last_ask_price > 0 and current_ask != config.last_ask_price:
+                    send_system5_alert_telegram('BTC', 'put', config.strike, config.last_ask_price, current_ask)
+                    system5_alert_counts['btc_put'] += 1
+                    print(f"[{datetime.now()}] ⚡ IMMEDIATE System 5 BTC PUT alert - change detected instantly")
+                
                 config.last_ask_price = current_ask
 
 # -------------------------------
@@ -1133,7 +1131,7 @@ class ETHWebSocketBot:
                     self.check_user_alerts()
                     check_premium_spikes_eth(self)
                     check_premium_matches_eth(self)
-                    check_system5_eth(self)
+                    check_system5_eth(self)  # System 5 with NO COOLDOWN
                     
                     self.last_arbitrage_check = current_time
                     global last_check_time
@@ -1823,7 +1821,7 @@ class BTCRESTBot:
                     self.check_user_alerts()
                     check_premium_spikes_btc(self)
                     check_premium_matches_btc(self)
-                    check_system5_btc(self)
+                    check_system5_btc(self)  # System 5 with NO COOLDOWN
                     
                     self.last_arbitrage_check = current_time
                     global last_check_time
@@ -1848,7 +1846,7 @@ eth_bot = ETHWebSocketBot()
 btc_bot = BTCRESTBot()
 
 # -------------------------------
-# HTML Template
+# HTML Template - DARK MODE
 # -------------------------------
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -1856,7 +1854,7 @@ HTML_TEMPLATE = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quad Alert System</title>
+    <title>Quad Alert System - Dark Mode</title>
     <style>
         * {
             margin: 0;
@@ -1866,23 +1864,24 @@ HTML_TEMPLATE = '''
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #0a0e27;
             min-height: 100vh;
             padding: 20px;
-            color: #333;
+            color: #e4e6eb;
         }
         
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            background: white;
+            background: #1a1f3a;
             border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
             overflow: hidden;
+            border: 1px solid #2a2f4a;
         }
         
         .header {
-            background: linear-gradient(135deg, #4a6ee0, #6a11cb);
+            background: linear-gradient(135deg, #1e3a8a, #312e81);
             color: white;
             padding: 30px;
             text-align: center;
@@ -1900,8 +1899,8 @@ HTML_TEMPLATE = '''
         
         .tabs {
             display: flex;
-            background: #f8f9fa;
-            border-bottom: 2px solid #e9ecef;
+            background: #0f142e;
+            border-bottom: 2px solid #2a2f4a;
             flex-wrap: wrap;
         }
         
@@ -1914,17 +1913,18 @@ HTML_TEMPLATE = '''
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
-            color: #6c757d;
+            color: #9ca3af;
         }
         
         .tab-btn:hover {
-            background: #e9ecef;
+            background: #1a1f3a;
+            color: #60a5fa;
         }
         
         .tab-btn.active {
-            background: white;
-            color: #4a6ee0;
-            border-bottom: 3px solid #4a6ee0;
+            background: #1a1f3a;
+            color: #60a5fa;
+            border-bottom: 3px solid #60a5fa;
         }
         
         .tab-content {
@@ -1937,12 +1937,12 @@ HTML_TEMPLATE = '''
         }
         
         .alert-success {
-            background: #d4edda;
-            color: #155724;
+            background: #064e3b;
+            color: #34d399;
             padding: 15px;
             border-radius: 10px;
             margin-bottom: 20px;
-            border: 1px solid #c3e6cb;
+            border: 1px solid #059669;
         }
         
         .system-section {
@@ -1952,7 +1952,7 @@ HTML_TEMPLATE = '''
         .section-title {
             font-size: 1.5rem;
             margin-bottom: 20px;
-            color: #4a6ee0;
+            color: #60a5fa;
             display: flex;
             align-items: center;
             gap: 10px;
@@ -1966,14 +1966,14 @@ HTML_TEMPLATE = '''
         }
         
         .stat-card {
-            background: #f8f9fa;
+            background: #0f142e;
             padding: 25px;
             border-radius: 15px;
-            border-left: 5px solid #4a6ee0;
+            border-left: 5px solid #60a5fa;
         }
         
         .stat-card h3 {
-            color: #333;
+            color: #e4e6eb;
             margin-bottom: 15px;
             font-size: 1.3rem;
         }
@@ -1986,24 +1986,25 @@ HTML_TEMPLATE = '''
         }
         
         .stat-label {
-            color: #6c757d;
+            color: #9ca3af;
         }
         
         .stat-value {
             font-weight: 600;
-            color: #333;
+            color: #e4e6eb;
         }
         
         .threshold-card {
-            background: white;
+            background: #0f142e;
             padding: 25px;
             border-radius: 15px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
             margin-bottom: 20px;
+            border: 1px solid #2a2f4a;
         }
         
         .threshold-card h3 {
-            color: #333;
+            color: #e4e6eb;
             margin-bottom: 20px;
             font-size: 1.3rem;
         }
@@ -2012,16 +2013,18 @@ HTML_TEMPLATE = '''
             width: 100%;
             padding: 12px;
             font-size: 1.1rem;
-            border: 2px solid #e0e0e0;
+            border: 2px solid #2a2f4a;
             border-radius: 10px;
             margin-bottom: 15px;
             transition: all 0.3s ease;
+            background: #1a1f3a;
+            color: #e4e6eb;
         }
         
         .threshold-input:focus {
             outline: none;
-            border-color: #4a6ee0;
-            box-shadow: 0 0 0 3px rgba(74, 110, 224, 0.1);
+            border-color: #60a5fa;
+            box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
         }
         
         .update-btn {
@@ -2032,14 +2035,14 @@ HTML_TEMPLATE = '''
             border-radius: 10px;
             cursor: pointer;
             transition: all 0.3s ease;
-            background: linear-gradient(135deg, #4a6ee0, #6a11cb);
+            background: linear-gradient(135deg, #3b82f6, #6366f1);
             color: white;
             width: 100%;
         }
         
         .update-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(74, 110, 224, 0.4);
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
         }
         
         .option-section {
@@ -2050,31 +2053,32 @@ HTML_TEMPLATE = '''
         }
         
         .option-card {
-            background: #f8f9fa;
+            background: #0f142e;
             padding: 25px;
             border-radius: 15px;
             border-top: 5px solid;
         }
         
-        .btc-call { border-color: #3498db; }
-        .btc-put { border-color: #e74c3c; }
-        .eth-call { border-color: #2ecc71; }
-        .eth-put { border-color: #9b59b6; }
+        .btc-call { border-color: #3b82f6; }
+        .btc-put { border-color: #ef4444; }
+        .eth-call { border-color: #10b981; }
+        .eth-put { border-color: #8b5cf6; }
         
         .option-card h4 {
             font-size: 1.2rem;
             margin-bottom: 15px;
-            color: #333;
+            color: #e4e6eb;
         }
         
         .select-input {
             width: 100%;
             padding: 12px;
             font-size: 1.1rem;
-            border: 2px solid #e0e0e0;
+            border: 2px solid #2a2f4a;
             border-radius: 10px;
             margin-bottom: 15px;
-            background: white;
+            background: #1a1f3a;
+            color: #e4e6eb;
         }
         
         .checkbox-group {
@@ -2087,6 +2091,7 @@ HTML_TEMPLATE = '''
         .checkbox-group input[type="checkbox"] {
             width: 20px;
             height: 20px;
+            cursor: pointer;
         }
         
         .activate-btn {
@@ -2097,7 +2102,7 @@ HTML_TEMPLATE = '''
             border-radius: 15px;
             cursor: pointer;
             transition: all 0.3s ease;
-            background: linear-gradient(135deg, #2ecc71, #27ae60);
+            background: linear-gradient(135deg, #059669, #047857);
             color: white;
             width: 100%;
             margin-top: 20px;
@@ -2105,18 +2110,19 @@ HTML_TEMPLATE = '''
         
         .activate-btn:hover {
             transform: translateY(-3px);
-            box-shadow: 0 12px 30px rgba(46, 204, 113, 0.4);
+            box-shadow: 0 12px 30px rgba(5, 150, 105, 0.4);
         }
         
         .status-panel {
-            background: #f8f9fa;
+            background: #0f142e;
             padding: 25px;
             border-radius: 15px;
             margin-top: 30px;
+            border: 1px solid #2a2f4a;
         }
         
         .status-panel h3 {
-            color: #333;
+            color: #e4e6eb;
             margin-bottom: 20px;
             font-size: 1.3rem;
         }
@@ -2126,7 +2132,7 @@ HTML_TEMPLATE = '''
             justify-content: space-between;
             align-items: center;
             padding: 12px 0;
-            border-bottom: 1px solid #e9ecef;
+            border-bottom: 1px solid #2a2f4a;
         }
         
         .status-item:last-child {
@@ -2135,7 +2141,7 @@ HTML_TEMPLATE = '''
         
         .status-label {
             font-size: 1.1rem;
-            color: #6c757d;
+            color: #9ca3af;
         }
         
         .status-value {
@@ -2144,11 +2150,11 @@ HTML_TEMPLATE = '''
         }
         
         .status-active {
-            color: #2ecc71;
+            color: #10b981;
         }
         
         .status-inactive {
-            color: #e74c3c;
+            color: #ef4444;
         }
         
         .dual-condition-grid {
@@ -2171,12 +2177,12 @@ HTML_TEMPLATE = '''
         }
         
         .condition-1 {
-            background: linear-gradient(135deg, #3498db, #2980b9);
+            background: linear-gradient(135deg, #1e40af, #1e3a8a);
             color: white;
         }
         
         .condition-2 {
-            background: linear-gradient(135deg, #9b59b6, #8e44ad);
+            background: linear-gradient(135deg, #6d28d9, #5b21b6);
             color: white;
         }
         
@@ -2195,7 +2201,7 @@ HTML_TEMPLATE = '''
             align-items: center;
             margin-bottom: 20px;
             padding: 15px;
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.3);
             border-radius: 10px;
         }
         
@@ -2216,7 +2222,7 @@ HTML_TEMPLATE = '''
             border: none;
             border-radius: 10px;
             cursor: pointer;
-            background: #2ecc71;
+            background: #059669;
             color: white;
             flex: 1;
             transition: all 0.3s ease;
@@ -2229,37 +2235,38 @@ HTML_TEMPLATE = '''
             border: none;
             border-radius: 10px;
             cursor: pointer;
-            background: #e74c3c;
+            background: #dc2626;
             color: white;
             flex: 1;
             transition: all 0.3s ease;
         }
         
         .start-btn:hover {
-            background: #27ae60;
+            background: #047857;
             transform: translateY(-2px);
         }
         
         .stop-btn:hover {
-            background: #c0392b;
+            background: #b91c1c;
             transform: translateY(-2px);
         }
         
         .config-section {
-            background: #f8f9fa;
+            background: #0f142e;
             padding: 25px;
             border-radius: 15px;
             margin-bottom: 20px;
+            border: 1px solid #2a2f4a;
         }
         
         .config-section h4 {
-            color: #333;
+            color: #e4e6eb;
             margin-bottom: 20px;
             font-size: 1.3rem;
         }
         
         .condition-section {
-            background: white;
+            background: #1a1f3a;
             padding: 20px;
             border-radius: 10px;
             margin-bottom: 20px;
@@ -2267,21 +2274,21 @@ HTML_TEMPLATE = '''
         }
         
         .condition-1-section {
-            border-left-color: #3498db;
+            border-left-color: #3b82f6;
         }
         
         .condition-2-section {
-            border-left-color: #9b59b6;
+            border-left-color: #8b5cf6;
         }
         
         .condition-section h5 {
             font-size: 1.1rem;
             margin-bottom: 15px;
-            color: #333;
+            color: #e4e6eb;
         }
         
         .condition-section small {
-            color: #666;
+            color: #9ca3af;
             display: block;
             margin-top: 5px;
             font-size: 0.9rem;
@@ -2295,7 +2302,7 @@ HTML_TEMPLATE = '''
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
-            color: #555;
+            color: #9ca3af;
         }
         
         .checkbox-grid {
@@ -2312,20 +2319,20 @@ HTML_TEMPLATE = '''
             border: none;
             border-radius: 10px;
             cursor: pointer;
-            background: #3498db;
+            background: #3b82f6;
             color: white;
             width: 100%;
             margin-top: 20px;
         }
         
         .save-btn:hover {
-            background: #2980b9;
+            background: #2563eb;
             transform: translateY(-2px);
         }
         
         .cooldown-note {
-            background: rgba(255, 255, 255, 0.2);
-            color: white;
+            background: rgba(0, 0, 0, 0.3);
+            color: #9ca3af;
             padding: 10px;
             border-radius: 5px;
             margin-top: 10px;
@@ -2335,7 +2342,7 @@ HTML_TEMPLATE = '''
         
         /* System 4 Styles */
         .system4-panel {
-            background: linear-gradient(135deg, #f39c12, #e67e22);
+            background: linear-gradient(135deg, #d97706, #ea580c);
             color: white;
         }
         
@@ -2369,10 +2376,10 @@ HTML_TEMPLATE = '''
             text-align: center;
             padding: 10px;
             font-size: 1.1rem;
-            border: 2px solid white;
+            border: 2px solid #f59e0b;
             border-radius: 8px;
-            background: rgba(255, 255, 255, 0.9);
-            color: #333;
+            background: #1a1f3a;
+            color: #e4e6eb;
             font-weight: bold;
         }
         
@@ -2381,17 +2388,17 @@ HTML_TEMPLATE = '''
             text-align: center;
             padding: 10px;
             font-size: 1.1rem;
-            border: 2px solid #f39c12;
+            border: 2px solid #f59e0b;
             border-radius: 8px;
-            background: white;
-            color: #333;
+            background: #1a1f3a;
+            color: #e4e6eb;
             font-weight: bold;
         }
         
         .stat-highlight {
             font-size: 1.5rem;
             font-weight: bold;
-            color: #f39c12;
+            color: #f59e0b;
         }
         
         /* System 5 Styles */
@@ -2403,22 +2410,24 @@ HTML_TEMPLATE = '''
         }
         
         .tracker-card {
-            background: #f8f9fa;
+            background: #0f142e;
             padding: 25px;
             border-radius: 15px;
             border-top: 5px solid;
             text-align: center;
+            border: 1px solid #2a2f4a;
         }
         
         .tracker-card.monitoring {
-            background: #f0fff4;
-            box-shadow: 0 0 20px rgba(46, 204, 113, 0.2);
+            background: #064e3b;
+            box-shadow: 0 0 20px rgba(5, 150, 105, 0.3);
+            border-color: #059669;
         }
         
         .tracker-card h4 {
             font-size: 1.3rem;
             margin-bottom: 20px;
-            color: #333;
+            color: #e4e6eb;
         }
         
         .tracker-status {
@@ -2430,9 +2439,18 @@ HTML_TEMPLATE = '''
         .footer {
             text-align: center;
             padding: 20px;
-            color: #6c757d;
-            border-top: 1px solid #e9ecef;
+            color: #9ca3af;
+            border-top: 1px solid #2a2f4a;
             margin-top: 30px;
+        }
+        
+        .footer a {
+            color: #60a5fa;
+            text-decoration: none;
+        }
+        
+        .footer a:hover {
+            text-decoration: underline;
         }
         
         @media (max-width: 768px) {
@@ -2580,7 +2598,7 @@ HTML_TEMPLATE = '''
         <div id="option-alerts-tab" class="tab-content">
             <div class="system-section">
                 <h2 class="section-title">🎯 Option Strike Alert System</h2>
-                <p style="margin-bottom: 20px; color: #666;">Configure alerts for specific strikes and premiums</p>
+                <p style="margin-bottom: 20px; color: #9ca3af;">Configure alerts for specific strikes and premiums</p>
                 
                 <form action="/activate_alerts" method="POST">
                     <div class="option-section">
@@ -2709,7 +2727,7 @@ HTML_TEMPLATE = '''
                         <div class="condition-status">
                             <div>
                                 <strong>Status:</strong>
-                                <span style="color: {% if spike_config.enabled_spike %}#2ecc71{% else %}#e74c3c{% endif %}; font-weight: bold;">
+                                <span style="color: {% if spike_config.enabled_spike %}#10b981{% else %}#ef4444{% endif %}; font-weight: bold;">
                                     {% if spike_config.enabled_spike %}🟢 RUNNING{% else %}🔴 STOPPED{% endif %}
                                 </span>
                             </div>
@@ -2729,7 +2747,7 @@ HTML_TEMPLATE = '''
                         <div class="condition-status">
                             <div>
                                 <strong>Status:</strong>
-                                <span style="color: {% if spike_config.enabled_spread %}#2ecc71{% else %}#e74c3c{% endif %}; font-weight: bold;">
+                                <span style="color: {% if spike_config.enabled_spread %}#10b981{% else %}#ef4444{% endif %}; font-weight: bold;">
                                     {% if spike_config.enabled_spread %}🟢 RUNNING{% else %}🔴 STOPPED{% endif %}
                                 </span>
                             </div>
@@ -2824,7 +2842,7 @@ HTML_TEMPLATE = '''
                     <div class="condition-status">
                         <div>
                             <strong>Status:</strong>
-                            <span style="color: {% if system4_active %}#2ecc71{% else %}#e74c3c{% endif %}; font-weight: bold;">
+                            <span style="color: {% if system4_active %}#10b981{% else %}#ef4444{% endif %}; font-weight: bold;">
                                 {% if system4_active %}🟢 RUNNING{% else %}🔴 STOPPED{% endif %}
                             </span>
                         </div>
@@ -2832,12 +2850,12 @@ HTML_TEMPLATE = '''
                     
                     <div class="condition-controls" style="display: flex; gap: 15px; margin-top: 20px;">
                         <form action="/start_system4" method="POST" style="flex: 1;">
-                            <button type="submit" class="start-btn" style="background: #2ecc71; width: 100%;">
+                            <button type="submit" class="start-btn" style="background: #059669; width: 100%;">
                                 ▶️ START SYSTEM 4
                             </button>
                         </form>
                         <form action="/stop_system4" method="POST" style="flex: 1;">
-                            <button type="submit" class="stop-btn" style="background: #e74c3c; width: 100%;">
+                            <button type="submit" class="stop-btn" style="background: #dc2626; width: 100%;">
                                 ⏸️ STOP SYSTEM 4
                             </button>
                         </form>
@@ -2859,7 +2877,7 @@ HTML_TEMPLATE = '''
                                 <span style="margin-left: 10px;">seconds</span>
                             </div>
                         </div>
-                        <button type="submit" class="save-btn" style="background: #f39c12; margin-top: 20px;">💾 UPDATE COOLDOWN</button>
+                        <button type="submit" class="save-btn" style="background: #d97706; margin-top: 20px;">💾 UPDATE COOLDOWN</button>
                     </form>
                 </div>
                 
@@ -2869,15 +2887,15 @@ HTML_TEMPLATE = '''
                         <div class="config-row">
                             <label for="btc_min_premium">BTC Minimum Premium ($):</label>
                             <div class="cooldown-control">
-                                <button type="button" onclick="decrementBtcFilter()" class="cooldown-btn" style="background: #f39c12;">-</button>
+                                <button type="button" onclick="decrementBtcFilter()" class="cooldown-btn" style="background: #d97706;">-</button>
                                 <input type="number" id="btc_min_premium" name="btc_min_premium" 
                                        value="{{ premium_match_config.btc_min_premium }}" 
                                        step="0.5" min="0" max="1000"
                                        class="filter-input">
-                                <button type="button" onclick="incrementBtcFilter()" class="cooldown-btn" style="background: #f39c12;">+</button>
+                                <button type="button" onclick="incrementBtcFilter()" class="cooldown-btn" style="background: #d97706;">+</button>
                             </div>
                         </div>
-                        <button type="submit" class="save-btn" style="background: #e67e22; margin-top: 20px;">💾 UPDATE BTC FILTER</button>
+                        <button type="submit" class="save-btn" style="background: #ea580c; margin-top: 20px;">💾 UPDATE BTC FILTER</button>
                     </form>
                 </div>
                 
@@ -2887,15 +2905,15 @@ HTML_TEMPLATE = '''
                         <div class="config-row">
                             <label for="eth_min_premium">ETH Minimum Premium ($):</label>
                             <div class="cooldown-control">
-                                <button type="button" onclick="decrementEthFilter()" class="cooldown-btn" style="background: #f39c12;">-</button>
+                                <button type="button" onclick="decrementEthFilter()" class="cooldown-btn" style="background: #d97706;">-</button>
                                 <input type="number" id="eth_min_premium" name="eth_min_premium" 
                                        value="{{ premium_match_config.eth_min_premium }}" 
-                                       step="0.5" min="0" max="500"
+                                       step="0.01" min="0.01" max="500"
                                        class="filter-input">
-                                <button type="button" onclick="incrementEthFilter()" class="cooldown-btn" style="background: #f39c12;">+</button>
+                                <button type="button" onclick="incrementEthFilter()" class="cooldown-btn" style="background: #d97706;">+</button>
                             </div>
                         </div>
-                        <button type="submit" class="save-btn" style="background: #e67e22; margin-top: 20px;">💾 UPDATE ETH FILTER</button>
+                        <button type="submit" class="save-btn" style="background: #ea580c; margin-top: 20px;">💾 UPDATE ETH FILTER</button>
                     </form>
                 </div>
             </div>
@@ -2904,8 +2922,8 @@ HTML_TEMPLATE = '''
         <!-- Tab 5: Premium Tracker (System 5) -->
         <div id="premium-tracker-tab" class="tab-content">
             <div class="system-section">
-                <h2 class="section-title">🎯 PREMIUM TRACKER</h2>
-                <p style="margin-bottom: 20px; color: #666;">Monitor ask price changes for specific contracts</p>
+                <h2 class="section-title">⚡ PREMIUM TRACKER (NO DELAY - IMMEDIATE ALERTS)</h2>
+                <p style="margin-bottom: 20px; color: #10b981;">⚠️ Alerts are sent IMMEDIATELY when price changes - No cooldown delay!</p>
                 
                 <div class="tracker-grid">
                     <!-- BTC CALL -->
@@ -2922,7 +2940,7 @@ HTML_TEMPLATE = '''
                             </select>
                             {% if premium_tracker_configs['btc_call'].active %}
                             <p>Last Ask: ${{ "%.2f"|format(premium_tracker_configs['btc_call'].last_ask_price) }}</p>
-                            <p class="tracker-status status-active">🟢 MONITORING</p>
+                            <p class="tracker-status status-active">🟢 MONITORING (IMMEDIATE)</p>
                             <button type="button" class="stop-btn" onclick="location.href='/stop_system5_btc_call'" style="width:100%;">⏸️ STOP</button>
                             {% else %}
                             <p>Last Ask: --</p>
@@ -2946,7 +2964,7 @@ HTML_TEMPLATE = '''
                             </select>
                             {% if premium_tracker_configs['btc_put'].active %}
                             <p>Last Ask: ${{ "%.2f"|format(premium_tracker_configs['btc_put'].last_ask_price) }}</p>
-                            <p class="tracker-status status-active">🟢 MONITORING</p>
+                            <p class="tracker-status status-active">🟢 MONITORING (IMMEDIATE)</p>
                             <button type="button" class="stop-btn" onclick="location.href='/stop_system5_btc_put'" style="width:100%;">⏸️ STOP</button>
                             {% else %}
                             <p>Last Ask: --</p>
@@ -2970,7 +2988,7 @@ HTML_TEMPLATE = '''
                             </select>
                             {% if premium_tracker_configs['eth_call'].active %}
                             <p>Last Ask: ${{ "%.2f"|format(premium_tracker_configs['eth_call'].last_ask_price) }}</p>
-                            <p class="tracker-status status-active">🟢 MONITORING</p>
+                            <p class="tracker-status status-active">🟢 MONITORING (IMMEDIATE)</p>
                             <button type="button" class="stop-btn" onclick="location.href='/stop_system5_eth_call'" style="width:100%;">⏸️ STOP</button>
                             {% else %}
                             <p>Last Ask: --</p>
@@ -2994,7 +3012,7 @@ HTML_TEMPLATE = '''
                             </select>
                             {% if premium_tracker_configs['eth_put'].active %}
                             <p>Last Ask: ${{ "%.2f"|format(premium_tracker_configs['eth_put'].last_ask_price) }}</p>
-                            <p class="tracker-status status-active">🟢 MONITORING</p>
+                            <p class="tracker-status status-active">🟢 MONITORING (IMMEDIATE)</p>
                             <button type="button" class="stop-btn" onclick="location.href='/stop_system5_eth_put'" style="width:100%;">⏸️ STOP</button>
                             {% else %}
                             <p>Last Ask: --</p>
@@ -3009,7 +3027,8 @@ HTML_TEMPLATE = '''
         
         <div class="footer">
             <p>Auto-expiry at 5:30 PM IST • All systems running simultaneously</p>
-            <p>Last Update: {{ get_ist_time() }} • <a href="/health" style="color: #4a6ee0;">Health Check</a></p>
+            <p>⚡ System 5: Immediate alerts - No delay on price changes!</p>
+            <p>Last Update: {{ get_ist_time() }} • <a href="/health" style="color: #60a5fa;">Health Check</a></p>
         </div>
     </div>
     
@@ -3062,18 +3081,16 @@ HTML_TEMPLATE = '''
         function decrementEthFilter() {
             let input = document.getElementById('eth_min_premium');
             let currentValue = parseFloat(input.value);
-            if (currentValue >= 0.5) {
-                input.value = (currentValue - 0.5).toFixed(1);
-            } else if (currentValue > 0 && currentValue < 0.5) {
-                input.value = 0;
+            if (currentValue >= 0.01) {
+                input.value = (currentValue - 0.01).toFixed(2);
             }
         }
         
         function incrementEthFilter() {
             let input = document.getElementById('eth_min_premium');
             let currentValue = parseFloat(input.value);
-            if (currentValue <= 499.5) {
-                input.value = (currentValue + 0.5).toFixed(1);
+            if (currentValue <= 499.99) {
+                input.value = (currentValue + 0.01).toFixed(2);
             }
         }
         
@@ -3310,8 +3327,7 @@ def update_system4_cooldown():
     global premium_match_config
     
     try:
-        old_cooldown = premium_match_config.cooldown_seconds
-        new_cooldown = int(request.form.get('cooldown_seconds', 60))
+        old_cooldown = premium_match_config.cooldown_seconds        new_cooldown = int(request.form.get('cooldown_seconds', 60))
         
         if new_cooldown < 5:
             new_cooldown = 5
@@ -3357,8 +3373,8 @@ def update_system4_eth_filter():
         old_filter = premium_match_config.eth_min_premium
         new_filter = float(request.form.get('eth_min_premium', 0))
         
-        if new_filter < 0:
-            new_filter = 0
+        if new_filter < 0.01:
+            new_filter = 0.01
         if new_filter > 500:
             new_filter = 500
             
@@ -3371,7 +3387,7 @@ def update_system4_eth_filter():
         print(f"[{datetime.now()}] ❌ Error updating System 4 ETH filter: {e}")
         return redirect('/?success=Error+updating+ETH+filter')
 
-# System 5 Routes
+# System 5 Routes - Immediate alerts, no cooldown
 @app.route('/start_system5_btc_call', methods=['POST'])
 def start_system5_btc_call():
     global premium_tracker_configs
@@ -3386,15 +3402,14 @@ def start_system5_btc_call():
         config = premium_tracker_configs['btc_call']
         config.active = True
         config.strike = strike
-        config.last_alert_time = 0
         
         symbol = get_btc_symbol(btc_bot, strike, 'call')
         if symbol and symbol in btc_bot.options_prices:
             config.last_ask_price = btc_bot.options_prices[symbol]['ask']
         
-        send_telegram(f"🔔 SYSTEM 5: BTC {strike} CALL TRACKING STARTED\n\n💰 Initial Ask: ${config.last_ask_price:.2f}\n⏰ Time: {get_ist_time()}")
+        send_telegram(f"🔔 SYSTEM 5: BTC {strike} CALL TRACKING STARTED (IMMEDIATE ALERTS - NO DELAY)\n\n💰 Initial Ask: ${config.last_ask_price:.2f}\n⚡ Every price change will trigger an immediate alert!\n⏰ Time: {get_ist_time()}")
         
-        return redirect('/?success=BTC+CALL+tracking+started!')
+        return redirect('/?success=BTC+CALL+tracking+started!+(Immediate+alerts)')
         
     except Exception as e:
         print(f"[{datetime.now()}] ❌ Error starting System 5 BTC CALL: {e}")
@@ -3426,15 +3441,14 @@ def start_system5_btc_put():
         config = premium_tracker_configs['btc_put']
         config.active = True
         config.strike = strike
-        config.last_alert_time = 0
         
         symbol = get_btc_symbol(btc_bot, strike, 'put')
         if symbol and symbol in btc_bot.options_prices:
             config.last_ask_price = btc_bot.options_prices[symbol]['ask']
         
-        send_telegram(f"🔔 SYSTEM 5: BTC {strike} PUT TRACKING STARTED\n\n💰 Initial Ask: ${config.last_ask_price:.2f}\n⏰ Time: {get_ist_time()}")
+        send_telegram(f"🔔 SYSTEM 5: BTC {strike} PUT TRACKING STARTED (IMMEDIATE ALERTS - NO DELAY)\n\n💰 Initial Ask: ${config.last_ask_price:.2f}\n⚡ Every price change will trigger an immediate alert!\n⏰ Time: {get_ist_time()}")
         
-        return redirect('/?success=BTC+PUT+tracking+started!')
+        return redirect('/?success=BTC+PUT+tracking+started!+(Immediate+alerts)')
         
     except Exception as e:
         print(f"[{datetime.now()}] ❌ Error starting System 5 BTC PUT: {e}")
@@ -3466,15 +3480,14 @@ def start_system5_eth_call():
         config = premium_tracker_configs['eth_call']
         config.active = True
         config.strike = strike
-        config.last_alert_time = 0
         
         symbol = get_eth_symbol(eth_bot, strike, 'call')
         if symbol and symbol in eth_bot.options_prices:
             config.last_ask_price = eth_bot.options_prices[symbol]['ask']
         
-        send_telegram(f"🔔 SYSTEM 5: ETH {strike} CALL TRACKING STARTED\n\n💰 Initial Ask: ${config.last_ask_price:.2f}\n⏰ Time: {get_ist_time()}")
+        send_telegram(f"🔔 SYSTEM 5: ETH {strike} CALL TRACKING STARTED (IMMEDIATE ALERTS - NO DELAY)\n\n💰 Initial Ask: ${config.last_ask_price:.2f}\n⚡ Every price change will trigger an immediate alert!\n⏰ Time: {get_ist_time()}")
         
-        return redirect('/?success=ETH+CALL+tracking+started!')
+        return redirect('/?success=ETH+CALL+tracking+started!+(Immediate+alerts)')
         
     except Exception as e:
         print(f"[{datetime.now()}] ❌ Error starting System 5 ETH CALL: {e}")
@@ -3506,15 +3519,14 @@ def start_system5_eth_put():
         config = premium_tracker_configs['eth_put']
         config.active = True
         config.strike = strike
-        config.last_alert_time = 0
         
         symbol = get_eth_symbol(eth_bot, strike, 'put')
         if symbol and symbol in eth_bot.options_prices:
             config.last_ask_price = eth_bot.options_prices[symbol]['ask']
         
-        send_telegram(f"🔔 SYSTEM 5: ETH {strike} PUT TRACKING STARTED\n\n💰 Initial Ask: ${config.last_ask_price:.2f}\n⏰ Time: {get_ist_time()}")
+        send_telegram(f"🔔 SYSTEM 5: ETH {strike} PUT TRACKING STARTED (IMMEDIATE ALERTS - NO DELAY)\n\n💰 Initial Ask: ${config.last_ask_price:.2f}\n⚡ Every price change will trigger an immediate alert!\n⏰ Time: {get_ist_time()}")
         
-        return redirect('/?success=ETH+PUT+tracking+started!')
+        return redirect('/?success=ETH+PUT+tracking+started!+(Immediate+alerts)')
         
     except Exception as e:
         print(f"[{datetime.now()}] ❌ Error starting System 5 ETH PUT: {e}")
@@ -3581,6 +3593,7 @@ def health():
             "eth_min_premium": premium_match_config.eth_min_premium
         },
         "system_5_premium_tracker": {
+            "immediate_alerts": "YES - NO COOLDOWN DELAY",
             config_id: asdict(config) for config_id, config in premium_tracker_configs.items()
         },
         "current_time": current_time_str
@@ -3608,7 +3621,7 @@ def ping():
 # -------------------------------
 def start_bots():
     print("="*60)
-    print("QUAD ALERT SYSTEM WITH PREMIUM TRACKER")
+    print("QUAD ALERT SYSTEM WITH PREMIUM TRACKER (DARK MODE + IMMEDIATE ALERTS)")
     print("="*60)
     print(f"⚡ System 1: Arbitrage Alerts")
     print(f"   • ETH Threshold: ${DELTA_THRESHOLD['ETH']:.2f}")
@@ -3616,7 +3629,7 @@ def start_bots():
     print(f"🎯 System 2: Option Strike Alerts")
     print(f"🚨 System 3: Dual Condition Spike Detection")
     print(f"🎯 System 4: Exact Premium Match Detection")
-    print(f"🔔 System 5: Premium Tracker (120s cooldown)")
+    print(f"⚡ System 5: Premium Tracker (IMMEDIATE ALERTS - NO DELAY)")
     print(f"📅 Current expiry: {get_current_expiry()}")
     print("="*60)
     
@@ -3626,6 +3639,7 @@ def start_bots():
     btc_thread.start()
     
     print(f"[{datetime.now()}] ✅ All five systems started")
+    print(f"[{datetime.now()}] ⚡ System 5: Price change alerts are IMMEDIATE - No cooldown!")
 
 if __name__ == "__main__":
     start_bots()
