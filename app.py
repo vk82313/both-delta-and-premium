@@ -1851,6 +1851,7 @@ btc_bot = BTCRESTBot()
 # HTML Template
 # -------------------------------
 HTML_TEMPLATE = '''
+HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1866,23 +1867,23 @@ HTML_TEMPLATE = '''
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #0f172a;  /* Dark background */
             min-height: 100vh;
             padding: 20px;
-            color: #333;
+            color: #cbd5e1;
         }
         
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            background: white;
+            background: #1e293b;  /* Dark container */
             border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
             overflow: hidden;
         }
         
         .header {
-            background: linear-gradient(135deg, #4a6ee0, #6a11cb);
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
             color: white;
             padding: 30px;
             text-align: center;
@@ -1900,8 +1901,8 @@ HTML_TEMPLATE = '''
         
         .tabs {
             display: flex;
-            background: #f8f9fa;
-            border-bottom: 2px solid #e9ecef;
+            background: #0f172a;  /* Darker tab bar */
+            border-bottom: 2px solid #334155;
             flex-wrap: wrap;
         }
         
@@ -1914,17 +1915,18 @@ HTML_TEMPLATE = '''
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
-            color: #6c757d;
+            color: #94a3b8;
         }
         
         .tab-btn:hover {
-            background: #e9ecef;
+            background: #1e293b;
+            color: #cbd5e1;
         }
         
         .tab-btn.active {
-            background: white;
-            color: #4a6ee0;
-            border-bottom: 3px solid #4a6ee0;
+            background: #1e293b;  /* Match container */
+            color: #818cf8;       /* Indigo accent */
+            border-bottom: 3px solid #818cf8;
         }
         
         .tab-content {
@@ -1937,12 +1939,12 @@ HTML_TEMPLATE = '''
         }
         
         .alert-success {
-            background: #d4edda;
-            color: #155724;
+            background: #064e3b;
+            color: #a7f3d0;
             padding: 15px;
             border-radius: 10px;
             margin-bottom: 20px;
-            border: 1px solid #c3e6cb;
+            border: 1px solid #10b981;
         }
         
         .system-section {
@@ -1952,7 +1954,7 @@ HTML_TEMPLATE = '''
         .section-title {
             font-size: 1.5rem;
             margin-bottom: 20px;
-            color: #4a6ee0;
+            color: #818cf8;
             display: flex;
             align-items: center;
             gap: 10px;
@@ -1966,14 +1968,14 @@ HTML_TEMPLATE = '''
         }
         
         .stat-card {
-            background: #f8f9fa;
+            background: #1e293b;
             padding: 25px;
             border-radius: 15px;
-            border-left: 5px solid #4a6ee0;
+            border-left: 5px solid #818cf8;
         }
         
         .stat-card h3 {
-            color: #333;
+            color: #f1f5f9;
             margin-bottom: 15px;
             font-size: 1.3rem;
         }
@@ -1986,24 +1988,24 @@ HTML_TEMPLATE = '''
         }
         
         .stat-label {
-            color: #6c757d;
+            color: #94a3b8;
         }
         
         .stat-value {
             font-weight: 600;
-            color: #333;
+            color: #e2e8f0;
         }
         
         .threshold-card {
-            background: white;
+            background: #1e293b;
             padding: 25px;
             border-radius: 15px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
             margin-bottom: 20px;
         }
         
         .threshold-card h3 {
-            color: #333;
+            color: #f1f5f9;
             margin-bottom: 20px;
             font-size: 1.3rem;
         }
@@ -2012,16 +2014,18 @@ HTML_TEMPLATE = '''
             width: 100%;
             padding: 12px;
             font-size: 1.1rem;
-            border: 2px solid #e0e0e0;
+            border: 2px solid #475569;
             border-radius: 10px;
             margin-bottom: 15px;
+            background: #0f172a;
+            color: #f1f5f9;
             transition: all 0.3s ease;
         }
         
         .threshold-input:focus {
             outline: none;
-            border-color: #4a6ee0;
-            box-shadow: 0 0 0 3px rgba(74, 110, 224, 0.1);
+            border-color: #818cf8;
+            box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.2);
         }
         
         .update-btn {
@@ -2032,14 +2036,14 @@ HTML_TEMPLATE = '''
             border-radius: 10px;
             cursor: pointer;
             transition: all 0.3s ease;
-            background: linear-gradient(135deg, #4a6ee0, #6a11cb);
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
             color: white;
             width: 100%;
         }
         
         .update-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(74, 110, 224, 0.4);
+            box-shadow: 0 8px 25px rgba(129, 140, 248, 0.4);
         }
         
         .option-section {
@@ -2050,7 +2054,7 @@ HTML_TEMPLATE = '''
         }
         
         .option-card {
-            background: #f8f9fa;
+            background: #1e293b;
             padding: 25px;
             border-radius: 15px;
             border-top: 5px solid;
@@ -2064,17 +2068,18 @@ HTML_TEMPLATE = '''
         .option-card h4 {
             font-size: 1.2rem;
             margin-bottom: 15px;
-            color: #333;
+            color: #f1f5f9;
         }
         
         .select-input {
             width: 100%;
             padding: 12px;
             font-size: 1.1rem;
-            border: 2px solid #e0e0e0;
+            border: 2px solid #475569;
             border-radius: 10px;
             margin-bottom: 15px;
-            background: white;
+            background: #0f172a;
+            color: #f1f5f9;
         }
         
         .checkbox-group {
@@ -2082,6 +2087,7 @@ HTML_TEMPLATE = '''
             align-items: center;
             gap: 10px;
             margin-top: 15px;
+            color: #cbd5e1;
         }
         
         .checkbox-group input[type="checkbox"] {
@@ -2097,7 +2103,7 @@ HTML_TEMPLATE = '''
             border-radius: 15px;
             cursor: pointer;
             transition: all 0.3s ease;
-            background: linear-gradient(135deg, #2ecc71, #27ae60);
+            background: linear-gradient(135deg, #10b981, #059669);
             color: white;
             width: 100%;
             margin-top: 20px;
@@ -2105,18 +2111,18 @@ HTML_TEMPLATE = '''
         
         .activate-btn:hover {
             transform: translateY(-3px);
-            box-shadow: 0 12px 30px rgba(46, 204, 113, 0.4);
+            box-shadow: 0 12px 30px rgba(16, 185, 129, 0.4);
         }
         
         .status-panel {
-            background: #f8f9fa;
+            background: #1e293b;
             padding: 25px;
             border-radius: 15px;
             margin-top: 30px;
         }
         
         .status-panel h3 {
-            color: #333;
+            color: #f1f5f9;
             margin-bottom: 20px;
             font-size: 1.3rem;
         }
@@ -2126,7 +2132,7 @@ HTML_TEMPLATE = '''
             justify-content: space-between;
             align-items: center;
             padding: 12px 0;
-            border-bottom: 1px solid #e9ecef;
+            border-bottom: 1px solid #334155;
         }
         
         .status-item:last-child {
@@ -2135,7 +2141,7 @@ HTML_TEMPLATE = '''
         
         .status-label {
             font-size: 1.1rem;
-            color: #6c757d;
+            color: #94a3b8;
         }
         
         .status-value {
@@ -2144,11 +2150,11 @@ HTML_TEMPLATE = '''
         }
         
         .status-active {
-            color: #2ecc71;
+            color: #4ade80;
         }
         
         .status-inactive {
-            color: #e74c3c;
+            color: #f87171;
         }
         
         .dual-condition-grid {
@@ -2171,12 +2177,12 @@ HTML_TEMPLATE = '''
         }
         
         .condition-1 {
-            background: linear-gradient(135deg, #3498db, #2980b9);
+            background: linear-gradient(135deg, #1e3a8a, #1d4ed8);
             color: white;
         }
         
         .condition-2 {
-            background: linear-gradient(135deg, #9b59b6, #8e44ad);
+            background: linear-gradient(135deg, #6b21a8, #9333ea);
             color: white;
         }
         
@@ -2216,7 +2222,7 @@ HTML_TEMPLATE = '''
             border: none;
             border-radius: 10px;
             cursor: pointer;
-            background: #2ecc71;
+            background: #10b981;
             color: white;
             flex: 1;
             transition: all 0.3s ease;
@@ -2229,37 +2235,37 @@ HTML_TEMPLATE = '''
             border: none;
             border-radius: 10px;
             cursor: pointer;
-            background: #e74c3c;
+            background: #ef4444;
             color: white;
             flex: 1;
             transition: all 0.3s ease;
         }
         
         .start-btn:hover {
-            background: #27ae60;
+            background: #059669;
             transform: translateY(-2px);
         }
         
         .stop-btn:hover {
-            background: #c0392b;
+            background: #dc2626;
             transform: translateY(-2px);
         }
         
         .config-section {
-            background: #f8f9fa;
+            background: #1e293b;
             padding: 25px;
             border-radius: 15px;
             margin-bottom: 20px;
         }
         
         .config-section h4 {
-            color: #333;
+            color: #f1f5f9;
             margin-bottom: 20px;
             font-size: 1.3rem;
         }
         
         .condition-section {
-            background: white;
+            background: #0f172a;
             padding: 20px;
             border-radius: 10px;
             margin-bottom: 20px;
@@ -2267,21 +2273,21 @@ HTML_TEMPLATE = '''
         }
         
         .condition-1-section {
-            border-left-color: #3498db;
+            border-left-color: #3b82f6;
         }
         
         .condition-2-section {
-            border-left-color: #9b59b6;
+            border-left-color: #a855f7;
         }
         
         .condition-section h5 {
             font-size: 1.1rem;
             margin-bottom: 15px;
-            color: #333;
+            color: #e2e8f0;
         }
         
         .condition-section small {
-            color: #666;
+            color: #94a3b8;
             display: block;
             margin-top: 5px;
             font-size: 0.9rem;
@@ -2295,7 +2301,7 @@ HTML_TEMPLATE = '''
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
-            color: #555;
+            color: #cbd5e1;
         }
         
         .checkbox-grid {
@@ -2312,14 +2318,14 @@ HTML_TEMPLATE = '''
             border: none;
             border-radius: 10px;
             cursor: pointer;
-            background: #3498db;
+            background: #3b82f6;
             color: white;
             width: 100%;
             margin-top: 20px;
         }
         
         .save-btn:hover {
-            background: #2980b9;
+            background: #2563eb;
             transform: translateY(-2px);
         }
         
@@ -2335,7 +2341,7 @@ HTML_TEMPLATE = '''
         
         /* System 4 Styles */
         .system4-panel {
-            background: linear-gradient(135deg, #f39c12, #e67e22);
+            background: linear-gradient(135deg, #b45309, #d97706);
             color: white;
         }
         
@@ -2372,7 +2378,7 @@ HTML_TEMPLATE = '''
             border: 2px solid white;
             border-radius: 8px;
             background: rgba(255, 255, 255, 0.9);
-            color: #333;
+            color: #1e293b;
             font-weight: bold;
         }
         
@@ -2381,17 +2387,17 @@ HTML_TEMPLATE = '''
             text-align: center;
             padding: 10px;
             font-size: 1.1rem;
-            border: 2px solid #f39c12;
+            border: 2px solid #d97706;
             border-radius: 8px;
-            background: white;
-            color: #333;
+            background: #1e293b;
+            color: #f1f5f9;
             font-weight: bold;
         }
         
         .stat-highlight {
             font-size: 1.5rem;
             font-weight: bold;
-            color: #f39c12;
+            color: #f59e0b;
         }
         
         /* System 5 Styles */
@@ -2403,7 +2409,7 @@ HTML_TEMPLATE = '''
         }
         
         .tracker-card {
-            background: #f8f9fa;
+            background: #1e293b;
             padding: 25px;
             border-radius: 15px;
             border-top: 5px solid;
@@ -2411,14 +2417,14 @@ HTML_TEMPLATE = '''
         }
         
         .tracker-card.monitoring {
-            background: #f0fff4;
-            box-shadow: 0 0 20px rgba(46, 204, 113, 0.2);
+            background: #064e3b;
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
         }
         
         .tracker-card h4 {
             font-size: 1.3rem;
             margin-bottom: 20px;
-            color: #333;
+            color: #f1f5f9;
         }
         
         .tracker-status {
@@ -2430,8 +2436,8 @@ HTML_TEMPLATE = '''
         .footer {
             text-align: center;
             padding: 20px;
-            color: #6c757d;
-            border-top: 1px solid #e9ecef;
+            color: #94a3b8;
+            border-top: 1px solid #334155;
             margin-top: 30px;
         }
         
@@ -2580,7 +2586,7 @@ HTML_TEMPLATE = '''
         <div id="option-alerts-tab" class="tab-content">
             <div class="system-section">
                 <h2 class="section-title">🎯 Option Strike Alert System</h2>
-                <p style="margin-bottom: 20px; color: #666;">Configure alerts for specific strikes and premiums</p>
+                <p style="margin-bottom: 20px; color: #94a3b8;">Configure alerts for specific strikes and premiums</p>
                 
                 <form action="/activate_alerts" method="POST">
                     <div class="option-section">
@@ -2709,7 +2715,7 @@ HTML_TEMPLATE = '''
                         <div class="condition-status">
                             <div>
                                 <strong>Status:</strong>
-                                <span style="color: {% if spike_config.enabled_spike %}#2ecc71{% else %}#e74c3c{% endif %}; font-weight: bold;">
+                                <span style="color: {% if spike_config.enabled_spike %}#4ade80{% else %}#f87171{% endif %}; font-weight: bold;">
                                     {% if spike_config.enabled_spike %}🟢 RUNNING{% else %}🔴 STOPPED{% endif %}
                                 </span>
                             </div>
@@ -2729,7 +2735,7 @@ HTML_TEMPLATE = '''
                         <div class="condition-status">
                             <div>
                                 <strong>Status:</strong>
-                                <span style="color: {% if spike_config.enabled_spread %}#2ecc71{% else %}#e74c3c{% endif %}; font-weight: bold;">
+                                <span style="color: {% if spike_config.enabled_spread %}#4ade80{% else %}#f87171{% endif %}; font-weight: bold;">
                                     {% if spike_config.enabled_spread %}🟢 RUNNING{% else %}🔴 STOPPED{% endif %}
                                 </span>
                             </div>
@@ -2824,7 +2830,7 @@ HTML_TEMPLATE = '''
                     <div class="condition-status">
                         <div>
                             <strong>Status:</strong>
-                            <span style="color: {% if system4_active %}#2ecc71{% else %}#e74c3c{% endif %}; font-weight: bold;">
+                            <span style="color: {% if system4_active %}#4ade80{% else %}#f87171{% endif %}; font-weight: bold;">
                                 {% if system4_active %}🟢 RUNNING{% else %}🔴 STOPPED{% endif %}
                             </span>
                         </div>
@@ -2832,12 +2838,12 @@ HTML_TEMPLATE = '''
                     
                     <div class="condition-controls" style="display: flex; gap: 15px; margin-top: 20px;">
                         <form action="/start_system4" method="POST" style="flex: 1;">
-                            <button type="submit" class="start-btn" style="background: #2ecc71; width: 100%;">
+                            <button type="submit" class="start-btn" style="background: #10b981; width: 100%;">
                                 ▶️ START SYSTEM 4
                             </button>
                         </form>
                         <form action="/stop_system4" method="POST" style="flex: 1;">
-                            <button type="submit" class="stop-btn" style="background: #e74c3c; width: 100%;">
+                            <button type="submit" class="stop-btn" style="background: #ef4444; width: 100%;">
                                 ⏸️ STOP SYSTEM 4
                             </button>
                         </form>
@@ -2859,7 +2865,7 @@ HTML_TEMPLATE = '''
                                 <span style="margin-left: 10px;">seconds</span>
                             </div>
                         </div>
-                        <button type="submit" class="save-btn" style="background: #f39c12; margin-top: 20px;">💾 UPDATE COOLDOWN</button>
+                        <button type="submit" class="save-btn" style="background: #d97706; margin-top: 20px;">💾 UPDATE COOLDOWN</button>
                     </form>
                 </div>
                 
@@ -2869,15 +2875,15 @@ HTML_TEMPLATE = '''
                         <div class="config-row">
                             <label for="btc_min_premium">BTC Minimum Premium ($):</label>
                             <div class="cooldown-control">
-                                <button type="button" onclick="decrementBtcFilter()" class="cooldown-btn" style="background: #f39c12;">-</button>
+                                <button type="button" onclick="decrementBtcFilter()" class="cooldown-btn" style="background: #d97706;">-</button>
                                 <input type="number" id="btc_min_premium" name="btc_min_premium" 
                                        value="{{ premium_match_config.btc_min_premium }}" 
                                        step="0.5" min="0" max="1000"
                                        class="filter-input">
-                                <button type="button" onclick="incrementBtcFilter()" class="cooldown-btn" style="background: #f39c12;">+</button>
+                                <button type="button" onclick="incrementBtcFilter()" class="cooldown-btn" style="background: #d97706;">+</button>
                             </div>
                         </div>
-                        <button type="submit" class="save-btn" style="background: #e67e22; margin-top: 20px;">💾 UPDATE BTC FILTER</button>
+                        <button type="submit" class="save-btn" style="background: #b45309; margin-top: 20px;">💾 UPDATE BTC FILTER</button>
                     </form>
                 </div>
                 
@@ -2887,15 +2893,15 @@ HTML_TEMPLATE = '''
                         <div class="config-row">
                             <label for="eth_min_premium">ETH Minimum Premium ($):</label>
                             <div class="cooldown-control">
-                                <button type="button" onclick="decrementEthFilter()" class="cooldown-btn" style="background: #f39c12;">-</button>
+                                <button type="button" onclick="decrementEthFilter()" class="cooldown-btn" style="background: #d97706;">-</button>
                                 <input type="number" id="eth_min_premium" name="eth_min_premium" 
                                        value="{{ premium_match_config.eth_min_premium }}" 
                                        step="0.5" min="0" max="500"
                                        class="filter-input">
-                                <button type="button" onclick="incrementEthFilter()" class="cooldown-btn" style="background: #f39c12;">+</button>
+                                <button type="button" onclick="incrementEthFilter()" class="cooldown-btn" style="background: #d97706;">+</button>
                             </div>
                         </div>
-                        <button type="submit" class="save-btn" style="background: #e67e22; margin-top: 20px;">💾 UPDATE ETH FILTER</button>
+                        <button type="submit" class="save-btn" style="background: #b45309; margin-top: 20px;">💾 UPDATE ETH FILTER</button>
                     </form>
                 </div>
             </div>
@@ -2905,7 +2911,7 @@ HTML_TEMPLATE = '''
         <div id="premium-tracker-tab" class="tab-content">
             <div class="system-section">
                 <h2 class="section-title">🎯 PREMIUM TRACKER</h2>
-                <p style="margin-bottom: 20px; color: #666;">Monitor ask price changes for specific contracts</p>
+                <p style="margin-bottom: 20px; color: #94a3b8;">Monitor ask price changes for specific contracts</p>
                 
                 <div class="tracker-grid">
                     <!-- BTC CALL -->
@@ -3009,7 +3015,7 @@ HTML_TEMPLATE = '''
         
         <div class="footer">
             <p>Auto-expiry at 5:30 PM IST • All systems running simultaneously</p>
-            <p>Last Update: {{ get_ist_time() }} • <a href="/health" style="color: #4a6ee0;">Health Check</a></p>
+            <p>Last Update: {{ get_ist_time() }} • <a href="/health" style="color: #818cf8;">Health Check</a></p>
         </div>
     </div>
     
@@ -3084,7 +3090,6 @@ HTML_TEMPLATE = '''
 </body>
 </html>
 '''
-
 # -------------------------------
 # Flask Routes
 # -------------------------------
