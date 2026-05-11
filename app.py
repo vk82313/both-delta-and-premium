@@ -1,4 +1,3 @@
-HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -14,7 +13,7 @@ HTML_TEMPLATE = '''
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             min-height: 100vh;
             padding: 20px;
             color: #e0e0e0;
@@ -23,39 +22,34 @@ HTML_TEMPLATE = '''
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            background: #1a1a2e;
+            background: #0f0f1a;
             border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
             overflow: hidden;
-            border: 1px solid #2d2d4a;
+            border: 1px solid #2a2a4a;
         }
         
         .header {
-            background: linear-gradient(135deg, #16213e, #0f3460);
-            color: #e0e0e0;
+            background: linear-gradient(135deg, #4a6ee0, #6a11cb);
+            color: white;
             padding: 30px;
             text-align: center;
-            border-bottom: 1px solid #2d2d4a;
         }
         
         .header h1 {
             font-size: 2.5rem;
             margin-bottom: 10px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
         }
         
         .header .subtitle {
             font-size: 1.2rem;
-            opacity: 0.8;
+            opacity: 0.9;
         }
         
         .tabs {
             display: flex;
-            background: #0f0f23;
-            border-bottom: 2px solid #2d2d4a;
+            background: #1a1a2e;
+            border-bottom: 2px solid #2a2a4a;
             flex-wrap: wrap;
         }
         
@@ -72,14 +66,14 @@ HTML_TEMPLATE = '''
         }
         
         .tab-btn:hover {
-            background: #1a1a35;
-            color: #667eea;
+            background: #25253d;
+            color: #e0e0e0;
         }
         
         .tab-btn.active {
-            background: #1a1a2e;
-            color: #667eea;
-            border-bottom: 3px solid #667eea;
+            background: #0f0f1a;
+            color: #4a6ee0;
+            border-bottom: 3px solid #4a6ee0;
         }
         
         .tab-content {
@@ -92,12 +86,12 @@ HTML_TEMPLATE = '''
         }
         
         .alert-success {
-            background: #1a3a2a;
-            color: #2ecc71;
+            background: #1e3a2f;
+            color: #4ade80;
             padding: 15px;
             border-radius: 10px;
             margin-bottom: 20px;
-            border: 1px solid #2ecc71;
+            border: 1px solid #4ade80;
         }
         
         .system-section {
@@ -107,7 +101,7 @@ HTML_TEMPLATE = '''
         .section-title {
             font-size: 1.5rem;
             margin-bottom: 20px;
-            color: #667eea;
+            color: #60a5fa;
             display: flex;
             align-items: center;
             gap: 10px;
@@ -121,15 +115,14 @@ HTML_TEMPLATE = '''
         }
         
         .stat-card {
-            background: #0f0f23;
+            background: #1a1a2e;
             padding: 25px;
             border-radius: 15px;
-            border-left: 5px solid #667eea;
-            border: 1px solid #2d2d4a;
+            border-left: 5px solid #4a6ee0;
         }
         
         .stat-card h3 {
-            color: #667eea;
+            color: #e0e0e0;
             margin-bottom: 15px;
             font-size: 1.3rem;
         }
@@ -142,7 +135,7 @@ HTML_TEMPLATE = '''
         }
         
         .stat-label {
-            color: #a0a0c0;
+            color: #94a3b8;
         }
         
         .stat-value {
@@ -151,41 +144,36 @@ HTML_TEMPLATE = '''
         }
         
         .threshold-card {
-            background: #0f0f23;
+            background: #1a1a2e;
             padding: 25px;
             border-radius: 15px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.4);
             margin-bottom: 20px;
-            border: 1px solid #2d2d4a;
+            border: 1px solid #2a2a4a;
         }
         
         .threshold-card h3 {
-            color: #667eea;
+            color: #e0e0e0;
             margin-bottom: 20px;
             font-size: 1.3rem;
-        }
-        
-        .threshold-card h4 {
-            color: #e0e0e0;
-            margin-bottom: 15px;
         }
         
         .threshold-input {
             width: 100%;
             padding: 12px;
             font-size: 1.1rem;
-            border: 2px solid #2d2d4a;
+            background: #25253d;
+            border: 2px solid #475569;
             border-radius: 10px;
             margin-bottom: 15px;
-            transition: all 0.3s ease;
-            background: #1a1a35;
             color: #e0e0e0;
+            transition: all 0.3s ease;
         }
         
         .threshold-input:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+            border-color: #4a6ee0;
+            box-shadow: 0 0 0 3px rgba(74, 110, 224, 0.2);
         }
         
         .update-btn {
@@ -196,14 +184,14 @@ HTML_TEMPLATE = '''
             border-radius: 10px;
             cursor: pointer;
             transition: all 0.3s ease;
-            background: linear-gradient(135deg, #667eea, #764ba2);
+            background: linear-gradient(135deg, #4a6ee0, #6a11cb);
             color: white;
             width: 100%;
         }
         
         .update-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 8px 25px rgba(74, 110, 224, 0.5);
         }
         
         .option-section {
@@ -214,18 +202,16 @@ HTML_TEMPLATE = '''
         }
         
         .option-card {
-            background: #0f0f23;
+            background: #1a1a2e;
             padding: 25px;
             border-radius: 15px;
             border-top: 5px solid;
-            border: 1px solid #2d2d4a;
-            border-top-width: 5px;
         }
         
-        .btc-call { border-color: #3498db; border-top-color: #3498db; }
-        .btc-put { border-color: #e74c3c; border-top-color: #e74c3c; }
-        .eth-call { border-color: #2ecc71; border-top-color: #2ecc71; }
-        .eth-put { border-color: #9b59b6; border-top-color: #9b59b6; }
+        .btc-call { border-color: #3498db; }
+        .btc-put { border-color: #e74c3c; }
+        .eth-call { border-color: #2ecc71; }
+        .eth-put { border-color: #9b59b6; }
         
         .option-card h4 {
             font-size: 1.2rem;
@@ -237,15 +223,10 @@ HTML_TEMPLATE = '''
             width: 100%;
             padding: 12px;
             font-size: 1.1rem;
-            border: 2px solid #2d2d4a;
+            background: #25253d;
+            border: 2px solid #475569;
             border-radius: 10px;
             margin-bottom: 15px;
-            background: #1a1a35;
-            color: #e0e0e0;
-        }
-        
-        .select-input option {
-            background: #1a1a35;
             color: #e0e0e0;
         }
         
@@ -254,18 +235,13 @@ HTML_TEMPLATE = '''
             align-items: center;
             gap: 10px;
             margin-top: 15px;
+            color: #e0e0e0;
         }
         
         .checkbox-group input[type="checkbox"] {
             width: 20px;
             height: 20px;
-            cursor: pointer;
-            accent-color: #667eea;
-        }
-        
-        .checkbox-group label {
-            color: #e0e0e0;
-            cursor: pointer;
+            accent-color: #4a6ee0;
         }
         
         .activate-btn {
@@ -284,19 +260,19 @@ HTML_TEMPLATE = '''
         
         .activate-btn:hover {
             transform: translateY(-3px);
-            box-shadow: 0 12px 30px rgba(46, 204, 113, 0.4);
+            box-shadow: 0 12px 30px rgba(46, 204, 113, 0.5);
         }
         
         .status-panel {
-            background: #0f0f23;
+            background: #1a1a2e;
             padding: 25px;
             border-radius: 15px;
             margin-top: 30px;
-            border: 1px solid #2d2d4a;
+            border: 1px solid #2a2a4a;
         }
         
         .status-panel h3 {
-            color: #667eea;
+            color: #e0e0e0;
             margin-bottom: 20px;
             font-size: 1.3rem;
         }
@@ -306,7 +282,7 @@ HTML_TEMPLATE = '''
             justify-content: space-between;
             align-items: center;
             padding: 12px 0;
-            border-bottom: 1px solid #2d2d4a;
+            border-bottom: 1px solid #2a2a4a;
         }
         
         .status-item:last-child {
@@ -315,7 +291,7 @@ HTML_TEMPLATE = '''
         
         .status-label {
             font-size: 1.1rem;
-            color: #a0a0c0;
+            color: #94a3b8;
         }
         
         .status-value {
@@ -324,11 +300,11 @@ HTML_TEMPLATE = '''
         }
         
         .status-active {
-            color: #2ecc71;
+            color: #4ade80;
         }
         
         .status-inactive {
-            color: #e74c3c;
+            color: #f87171;
         }
         
         .dual-condition-grid {
@@ -351,17 +327,17 @@ HTML_TEMPLATE = '''
         }
         
         .condition-1 {
-            background: linear-gradient(135deg, #1a3a5c, #1a2a4a);
-            border: 1px solid #3498db;
+            background: linear-gradient(135deg, #1e40af, #1e3a8a);
+            color: white;
         }
         
         .condition-2 {
-            background: linear-gradient(135deg, #3a1a5c, #2a1a4a);
-            border: 1px solid #9b59b6;
+            background: linear-gradient(135deg, #6b21a8, #581c87);
+            color: white;
         }
         
         .condition-panel h3 {
-            color: #e0e0e0;
+            color: white;
             margin-bottom: 20px;
             font-size: 1.5rem;
             display: flex;
@@ -375,7 +351,7 @@ HTML_TEMPLATE = '''
             align-items: center;
             margin-bottom: 20px;
             padding: 15px;
-            background: rgba(0, 0, 0, 0.3);
+            background: rgba(255, 255, 255, 0.1);
             border-radius: 10px;
         }
         
@@ -396,7 +372,7 @@ HTML_TEMPLATE = '''
             border: none;
             border-radius: 10px;
             cursor: pointer;
-            background: #2ecc71;
+            background: #22c55e;
             color: white;
             flex: 1;
             transition: all 0.3s ease;
@@ -409,42 +385,38 @@ HTML_TEMPLATE = '''
             border: none;
             border-radius: 10px;
             cursor: pointer;
-            background: #e74c3c;
+            background: #ef4444;
             color: white;
             flex: 1;
             transition: all 0.3s ease;
         }
         
         .start-btn:hover {
-            background: #27ae60;
+            background: #16a34a;
             transform: translateY(-2px);
         }
         
         .stop-btn:hover {
-            background: #c0392b;
+            background: #dc2626;
             transform: translateY(-2px);
         }
         
         .config-section {
-            background: #0f0f23;
+            background: #1a1a2e;
             padding: 25px;
             border-radius: 15px;
             margin-bottom: 20px;
-            border: 1px solid #2d2d4a;
+            border: 1px solid #2a2a4a;
         }
         
         .config-section h4 {
-            color: #667eea;
+            color: #e0e0e0;
             margin-bottom: 20px;
             font-size: 1.3rem;
         }
         
-        .config-section label {
-            color: #a0a0c0;
-        }
-        
         .condition-section {
-            background: #1a1a35;
+            background: #25253d;
             padding: 20px;
             border-radius: 10px;
             margin-bottom: 20px;
@@ -466,7 +438,7 @@ HTML_TEMPLATE = '''
         }
         
         .condition-section small {
-            color: #a0a0c0;
+            color: #94a3b8;
             display: block;
             margin-top: 5px;
             font-size: 0.9rem;
@@ -480,7 +452,7 @@ HTML_TEMPLATE = '''
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
-            color: #a0a0c0;
+            color: #cbd5e1;
         }
         
         .checkbox-grid {
@@ -504,13 +476,13 @@ HTML_TEMPLATE = '''
         }
         
         .save-btn:hover {
-            background: #2980b9;
+            background: #2563eb;
             transform: translateY(-2px);
         }
         
         .cooldown-note {
             background: rgba(255, 255, 255, 0.1);
-            color: #a0a0c0;
+            color: #e0e0e0;
             padding: 10px;
             border-radius: 5px;
             margin-top: 10px;
@@ -518,9 +490,10 @@ HTML_TEMPLATE = '''
             text-align: center;
         }
         
+        /* System 4 Styles */
         .system4-panel {
-            background: linear-gradient(135deg, #3a2a1a, #2a2a1a);
-            border: 1px solid #f39c12;
+            background: linear-gradient(135deg, #c2410c, #9a3412);
+            color: white;
         }
         
         .cooldown-control {
@@ -538,13 +511,13 @@ HTML_TEMPLATE = '''
             border: none;
             border-radius: 8px;
             cursor: pointer;
-            background: rgba(255, 255, 255, 0.1);
-            color: #e0e0e0;
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
             transition: all 0.3s ease;
         }
         
         .cooldown-btn:hover {
-            background: rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.25);
             transform: scale(1.05);
         }
         
@@ -553,9 +526,9 @@ HTML_TEMPLATE = '''
             text-align: center;
             padding: 10px;
             font-size: 1.1rem;
-            border: 2px solid #2d2d4a;
+            border: 2px solid #f59e0b;
             border-radius: 8px;
-            background: #1a1a35;
+            background: #1f2937;
             color: #e0e0e0;
             font-weight: bold;
         }
@@ -565,9 +538,9 @@ HTML_TEMPLATE = '''
             text-align: center;
             padding: 10px;
             font-size: 1.1rem;
-            border: 2px solid #f39c12;
+            border: 2px solid #f59e0b;
             border-radius: 8px;
-            background: #1a1a35;
+            background: #1f2937;
             color: #e0e0e0;
             font-weight: bold;
         }
@@ -575,9 +548,10 @@ HTML_TEMPLATE = '''
         .stat-highlight {
             font-size: 1.5rem;
             font-weight: bold;
-            color: #f39c12;
+            color: #fbbf24;
         }
         
+        /* System 5 Styles */
         .tracker-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -586,25 +560,23 @@ HTML_TEMPLATE = '''
         }
         
         .tracker-card {
-            background: #0f0f23;
+            background: #1a1a2e;
             padding: 25px;
             border-radius: 15px;
             border-top: 5px solid;
             text-align: center;
-            border: 1px solid #2d2d4a;
-            border-top-width: 5px;
+            border: 1px solid #2a2a4a;
         }
         
         .tracker-card.monitoring {
-            background: #1a2a1a;
-            box-shadow: 0 0 20px rgba(46, 204, 113, 0.2);
-            border-color: #2ecc71;
+            background: #1a2e1f;
+            box-shadow: 0 0 20px rgba(74, 222, 128, 0.3);
         }
         
         .tracker-card h4 {
             font-size: 1.3rem;
             margin-bottom: 20px;
-            color: #667eea;
+            color: #e0e0e0;
         }
         
         .tracker-status {
@@ -613,26 +585,12 @@ HTML_TEMPLATE = '''
             margin: 15px 0;
         }
         
-        .tracker-card p {
-            color: #a0a0c0;
-            margin: 10px 0;
-        }
-        
         .footer {
             text-align: center;
             padding: 20px;
-            color: #a0a0c0;
-            border-top: 1px solid #2d2d4a;
+            color: #94a3b8;
+            border-top: 1px solid #2a2a4a;
             margin-top: 30px;
-        }
-        
-        .footer a {
-            color: #667eea;
-            text-decoration: none;
-        }
-        
-        .footer a:hover {
-            text-decoration: underline;
         }
         
         @media (max-width: 768px) {
@@ -674,27 +632,8 @@ HTML_TEMPLATE = '''
             }
         }
         
-        input, select, textarea {
-            color-scheme: dark;
-        }
-        
-        ::-webkit-scrollbar {
-            width: 10px;
-            height: 10px;
-        }
-        
-        ::-webkit-scrollbar-track {
-            background: #0f0f23;
-            border-radius: 10px;
-        }
-        
-        ::-webkit-scrollbar-thumb {
-            background: #2d2d4a;
-            border-radius: 10px;
-        }
-        
-        ::-webkit-scrollbar-thumb:hover {
-            background: #667eea;
+        input, select {
+            color: #e0e0e0;
         }
     </style>
 </head>
@@ -803,7 +742,7 @@ HTML_TEMPLATE = '''
         <div id="option-alerts-tab" class="tab-content">
             <div class="system-section">
                 <h2 class="section-title">🎯 Option Strike Alert System</h2>
-                <p style="margin-bottom: 20px; color: #a0a0c0;">Configure alerts for specific strikes and premiums</p>
+                <p style="margin-bottom: 20px; color: #94a3b8;">Configure alerts for specific strikes and premiums</p>
                 
                 <form action="/activate_alerts" method="POST">
                     <div class="option-section">
@@ -932,7 +871,7 @@ HTML_TEMPLATE = '''
                         <div class="condition-status">
                             <div>
                                 <strong>Status:</strong>
-                                <span style="color: {% if spike_config.enabled_spike %}#2ecc71{% else %}#e74c3c{% endif %}; font-weight: bold;">
+                                <span style="color: {% if spike_config.enabled_spike %}#4ade80{% else %}#f87171{% endif %}; font-weight: bold;">
                                     {% if spike_config.enabled_spike %}🟢 RUNNING{% else %}🔴 STOPPED{% endif %}
                                 </span>
                             </div>
@@ -952,7 +891,7 @@ HTML_TEMPLATE = '''
                         <div class="condition-status">
                             <div>
                                 <strong>Status:</strong>
-                                <span style="color: {% if spike_config.enabled_spread %}#2ecc71{% else %}#e74c3c{% endif %}; font-weight: bold;">
+                                <span style="color: {% if spike_config.enabled_spread %}#4ade80{% else %}#f87171{% endif %}; font-weight: bold;">
                                     {% if spike_config.enabled_spread %}🟢 RUNNING{% else %}🔴 STOPPED{% endif %}
                                 </span>
                             </div>
@@ -1047,7 +986,7 @@ HTML_TEMPLATE = '''
                     <div class="condition-status">
                         <div>
                             <strong>Status:</strong>
-                            <span style="color: {% if system4_active %}#2ecc71{% else %}#e74c3c{% endif %}; font-weight: bold;">
+                            <span style="color: {% if system4_active %}#4ade80{% else %}#f87171{% endif %}; font-weight: bold;">
                                 {% if system4_active %}🟢 RUNNING{% else %}🔴 STOPPED{% endif %}
                             </span>
                         </div>
@@ -1055,12 +994,12 @@ HTML_TEMPLATE = '''
                     
                     <div class="condition-controls" style="display: flex; gap: 15px; margin-top: 20px;">
                         <form action="/start_system4" method="POST" style="flex: 1;">
-                            <button type="submit" class="start-btn" style="background: #2ecc71; width: 100%;">
+                            <button type="submit" class="start-btn" style="background: #22c55e; width: 100%;">
                                 ▶️ START SYSTEM 4
                             </button>
                         </form>
                         <form action="/stop_system4" method="POST" style="flex: 1;">
-                            <button type="submit" class="stop-btn" style="background: #e74c3c; width: 100%;">
+                            <button type="submit" class="stop-btn" style="background: #ef4444; width: 100%;">
                                 ⏸️ STOP SYSTEM 4
                             </button>
                         </form>
@@ -1082,7 +1021,7 @@ HTML_TEMPLATE = '''
                                 <span style="margin-left: 10px;">seconds</span>
                             </div>
                         </div>
-                        <button type="submit" class="save-btn" style="background: #f39c12; margin-top: 20px;">💾 UPDATE COOLDOWN</button>
+                        <button type="submit" class="save-btn" style="background: #f59e0b; margin-top: 20px;">💾 UPDATE COOLDOWN</button>
                     </form>
                 </div>
                 
@@ -1092,15 +1031,15 @@ HTML_TEMPLATE = '''
                         <div class="config-row">
                             <label for="btc_min_premium">BTC Minimum Premium ($):</label>
                             <div class="cooldown-control">
-                                <button type="button" onclick="decrementBtcFilter()" class="cooldown-btn" style="background: #f39c12;">-</button>
+                                <button type="button" onclick="decrementBtcFilter()" class="cooldown-btn" style="background: #f59e0b;">-</button>
                                 <input type="number" id="btc_min_premium" name="btc_min_premium" 
                                        value="{{ premium_match_config.btc_min_premium }}" 
                                        step="0.5" min="0" max="1000"
                                        class="filter-input">
-                                <button type="button" onclick="incrementBtcFilter()" class="cooldown-btn" style="background: #f39c12;">+</button>
+                                <button type="button" onclick="incrementBtcFilter()" class="cooldown-btn" style="background: #f59e0b;">+</button>
                             </div>
                         </div>
-                        <button type="submit" class="save-btn" style="background: #e67e22; margin-top: 20px;">💾 UPDATE BTC FILTER</button>
+                        <button type="submit" class="save-btn" style="background: #d97706; margin-top: 20px;">💾 UPDATE BTC FILTER</button>
                     </form>
                 </div>
                 
@@ -1110,15 +1049,15 @@ HTML_TEMPLATE = '''
                         <div class="config-row">
                             <label for="eth_min_premium">ETH Minimum Premium ($):</label>
                             <div class="cooldown-control">
-                                <button type="button" onclick="decrementEthFilter()" class="cooldown-btn" style="background: #f39c12;">-</button>
+                                <button type="button" onclick="decrementEthFilter()" class="cooldown-btn" style="background: #f59e0b;">-</button>
                                 <input type="number" id="eth_min_premium" name="eth_min_premium" 
                                        value="{{ premium_match_config.eth_min_premium }}" 
                                        step="0.5" min="0" max="500"
                                        class="filter-input">
-                                <button type="button" onclick="incrementEthFilter()" class="cooldown-btn" style="background: #f39c12;">+</button>
+                                <button type="button" onclick="incrementEthFilter()" class="cooldown-btn" style="background: #f59e0b;">+</button>
                             </div>
                         </div>
-                        <button type="submit" class="save-btn" style="background: #e67e22; margin-top: 20px;">💾 UPDATE ETH FILTER</button>
+                        <button type="submit" class="save-btn" style="background: #d97706; margin-top: 20px;">💾 UPDATE ETH FILTER</button>
                     </form>
                 </div>
             </div>
@@ -1128,7 +1067,7 @@ HTML_TEMPLATE = '''
         <div id="premium-tracker-tab" class="tab-content">
             <div class="system-section">
                 <h2 class="section-title">🎯 PREMIUM TRACKER</h2>
-                <p style="margin-bottom: 20px; color: #a0a0c0;">Monitor ask price changes for specific contracts</p>
+                <p style="margin-bottom: 20px; color: #94a3b8;">Monitor ask price changes for specific contracts</p>
                 
                 <div class="tracker-grid">
                     <!-- BTC CALL -->
@@ -1232,7 +1171,7 @@ HTML_TEMPLATE = '''
         
         <div class="footer">
             <p>Auto-expiry at 5:30 PM IST • All systems running simultaneously</p>
-            <p>Last Update: {{ get_ist_time() }} • <a href="/health">Health Check</a></p>
+            <p>Last Update: {{ get_ist_time() }} • <a href="/health" style="color: #60a5fa;">Health Check</a></p>
         </div>
     </div>
     
@@ -1306,4 +1245,3 @@ HTML_TEMPLATE = '''
     </script>
 </body>
 </html>
-'''
