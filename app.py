@@ -111,7 +111,7 @@ class PremiumTrackerConfig:
     active: bool = False
     strike: float = 0
     last_ask_price: float = 0.0
-    last_alert_time: float = 0.0
+    last_alert_time: float = 0.0   # still present but no longer used for cooldown
 
 # System 5 data storage
 premium_tracker_configs = {
@@ -120,9 +120,6 @@ premium_tracker_configs = {
     'eth_call': PremiumTrackerConfig(),
     'eth_put': PremiumTrackerConfig()
 }
-
-# System 5 cooldown (120 seconds)
-SYSTEM5_COOLDOWN = 120
 
 # System 5 alert counters
 system5_alert_counts = {
@@ -536,7 +533,7 @@ def check_premium_matches_btc(btc_bot):
                                                    premium_match_config.eth_min_premium)
 
 # -------------------------------
-# System 5: Premium Tracker Functions
+# System 5: Premium Tracker Functions (COOLDOWN REMOVED)
 # -------------------------------
 def get_eth_symbol(eth_bot, strike: float, option_type: str) -> Optional[str]:
     """Get the symbol for a specific ETH strike and type"""
@@ -563,7 +560,7 @@ def get_btc_symbol(btc_bot, strike: float, option_type: str) -> Optional[str]:
     return None
 
 def check_system5_eth(eth_bot):
-    """System 5: Check for ASK price changes in ETH options"""
+    """System 5: Check for ASK price changes in ETH options (NO COOLDOWN)"""
     global premium_tracker_configs, system5_alert_counts
     
     # Check ETH CALL
@@ -573,11 +570,8 @@ def check_system5_eth(eth_bot):
         if symbol and symbol in eth_bot.options_prices:
             current_ask = eth_bot.options_prices[symbol]['ask']
             if current_ask > 0 and config.last_ask_price > 0 and current_ask != config.last_ask_price:
-                now = datetime.now().timestamp()
-                if now - config.last_alert_time >= SYSTEM5_COOLDOWN:
-                    send_system5_alert_telegram('ETH', 'call', config.strike, config.last_ask_price, current_ask)
-                    config.last_alert_time = now
-                    system5_alert_counts['eth_call'] += 1
+                send_system5_alert_telegram('ETH', 'call', config.strike, config.last_ask_price, current_ask)
+                system5_alert_counts['eth_call'] += 1
             if current_ask > 0:
                 config.last_ask_price = current_ask
     
@@ -588,16 +582,13 @@ def check_system5_eth(eth_bot):
         if symbol and symbol in eth_bot.options_prices:
             current_ask = eth_bot.options_prices[symbol]['ask']
             if current_ask > 0 and config.last_ask_price > 0 and current_ask != config.last_ask_price:
-                now = datetime.now().timestamp()
-                if now - config.last_alert_time >= SYSTEM5_COOLDOWN:
-                    send_system5_alert_telegram('ETH', 'put', config.strike, config.last_ask_price, current_ask)
-                    config.last_alert_time = now
-                    system5_alert_counts['eth_put'] += 1
+                send_system5_alert_telegram('ETH', 'put', config.strike, config.last_ask_price, current_ask)
+                system5_alert_counts['eth_put'] += 1
             if current_ask > 0:
                 config.last_ask_price = current_ask
 
 def check_system5_btc(btc_bot):
-    """System 5: Check for ASK price changes in BTC options"""
+    """System 5: Check for ASK price changes in BTC options (NO COOLDOWN)"""
     global premium_tracker_configs, system5_alert_counts
     
     # Check BTC CALL
@@ -607,11 +598,8 @@ def check_system5_btc(btc_bot):
         if symbol and symbol in btc_bot.options_prices:
             current_ask = btc_bot.options_prices[symbol]['ask']
             if current_ask > 0 and config.last_ask_price > 0 and current_ask != config.last_ask_price:
-                now = datetime.now().timestamp()
-                if now - config.last_alert_time >= SYSTEM5_COOLDOWN:
-                    send_system5_alert_telegram('BTC', 'call', config.strike, config.last_ask_price, current_ask)
-                    config.last_alert_time = now
-                    system5_alert_counts['btc_call'] += 1
+                send_system5_alert_telegram('BTC', 'call', config.strike, config.last_ask_price, current_ask)
+                system5_alert_counts['btc_call'] += 1
             if current_ask > 0:
                 config.last_ask_price = current_ask
     
@@ -622,11 +610,8 @@ def check_system5_btc(btc_bot):
         if symbol and symbol in btc_bot.options_prices:
             current_ask = btc_bot.options_prices[symbol]['ask']
             if current_ask > 0 and config.last_ask_price > 0 and current_ask != config.last_ask_price:
-                now = datetime.now().timestamp()
-                if now - config.last_alert_time >= SYSTEM5_COOLDOWN:
-                    send_system5_alert_telegram('BTC', 'put', config.strike, config.last_ask_price, current_ask)
-                    config.last_alert_time = now
-                    system5_alert_counts['btc_put'] += 1
+                send_system5_alert_telegram('BTC', 'put', config.strike, config.last_ask_price, current_ask)
+                system5_alert_counts['btc_put'] += 1
             if current_ask > 0:
                 config.last_ask_price = current_ask
 
@@ -1133,7 +1118,7 @@ class ETHWebSocketBot:
                     self.check_user_alerts()
                     check_premium_spikes_eth(self)
                     check_premium_matches_eth(self)
-                    check_system5_eth(self)
+                    check_system5_eth(self)  # calls the modified no-cooldown version
                     
                     self.last_arbitrage_check = current_time
                     global last_check_time
@@ -1823,7 +1808,7 @@ class BTCRESTBot:
                     self.check_user_alerts()
                     check_premium_spikes_btc(self)
                     check_premium_matches_btc(self)
-                    check_system5_btc(self)
+                    check_system5_btc(self)  # calls the modified no-cooldown version
                     
                     self.last_arbitrage_check = current_time
                     global last_check_time
@@ -1848,7 +1833,7 @@ eth_bot = ETHWebSocketBot()
 btc_bot = BTCRESTBot()
 
 # -------------------------------
-# HTML Template
+# HTML Template (unchanged from original, included for completeness)
 # -------------------------------
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -2904,8 +2889,8 @@ HTML_TEMPLATE = '''
         <!-- Tab 5: Premium Tracker (System 5) -->
         <div id="premium-tracker-tab" class="tab-content">
             <div class="system-section">
-                <h2 class="section-title">🎯 PREMIUM TRACKER</h2>
-                <p style="margin-bottom: 20px; color: #666;">Monitor ask price changes for specific contracts</p>
+                <h2 class="section-title">🎯 PREMIUM TRACKER (Instant Alerts)</h2>
+                <p style="margin-bottom: 20px; color: #666;">Monitor ask price changes for specific contracts — alerts on every change</p>
                 
                 <div class="tracker-grid">
                     <!-- BTC CALL -->
@@ -3008,7 +2993,7 @@ HTML_TEMPLATE = '''
         </div>
         
         <div class="footer">
-            <p>Auto-expiry at 5:30 PM IST • All systems running simultaneously</p>
+            <p>All systems running simultaneously • System 5 alerts on every ASK change</p>
             <p>Last Update: {{ get_ist_time() }} • <a href="/health" style="color: #4a6ee0;">Health Check</a></p>
         </div>
     </div>
@@ -3386,7 +3371,7 @@ def start_system5_btc_call():
         config = premium_tracker_configs['btc_call']
         config.active = True
         config.strike = strike
-        config.last_alert_time = 0
+        config.last_alert_time = 0  # no cooldown, still reset for cleanliness
         
         symbol = get_btc_symbol(btc_bot, strike, 'call')
         if symbol and symbol in btc_bot.options_prices:
@@ -3608,7 +3593,7 @@ def ping():
 # -------------------------------
 def start_bots():
     print("="*60)
-    print("QUAD ALERT SYSTEM WITH PREMIUM TRACKER")
+    print("QUAD ALERT SYSTEM WITH PREMIUM TRACKER (INSTANT ALERTS)")
     print("="*60)
     print(f"⚡ System 1: Arbitrage Alerts")
     print(f"   • ETH Threshold: ${DELTA_THRESHOLD['ETH']:.2f}")
@@ -3616,7 +3601,7 @@ def start_bots():
     print(f"🎯 System 2: Option Strike Alerts")
     print(f"🚨 System 3: Dual Condition Spike Detection")
     print(f"🎯 System 4: Exact Premium Match Detection")
-    print(f"🔔 System 5: Premium Tracker (120s cooldown)")
+    print(f"🔔 System 5: Premium Tracker (instant alerts on every change)")
     print(f"📅 Current expiry: {get_current_expiry()}")
     print("="*60)
     
